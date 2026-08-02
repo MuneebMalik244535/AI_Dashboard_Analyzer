@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Data Dashboard - Multi-Agent Analytics Platform</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .agent-card {
+            transition: all 0.3s ease;
+            border-left: 4px solid transparent;
+        }
+        .agent-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        .agent-planner { border-left-color: #3B82F6; }
+        .agent-data { border-left-color: #10B981; }
+        .agent-chart { border-left-color: #F59E0B; }
+        .agent-explainer { border-left-color: #8B5CF6; }
+        
+        .chat-message {
+            animation: slideIn 0.3s ease;
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .loading-dots::after {
+            content: '...';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+        @keyframes dots {
+            0%, 20% { content: ''; }
+            40% { content: '.'; }
+            60% { content: '..'; }
+            80%, 100% { content: '...'; }
+        }
+        
+        .chart-container {
+            min-height: 400px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 16px;
+            background: white;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center">
+                    <i class="fas fa-brain text-blue-600 text-2xl mr-3"></i>
+                    <h1 class="text-xl font-bold text-gray-900">AI Data Dashboard</h1>
+                    <span class="ml-3 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">Multi-Agent System</span>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span id="agent-status" class="text-sm text-gray-600">
+                        <i class="fas fa-circle text-green-500 text-xs mr-1"></i>
+                        All Agents Active
+                    </span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Agent Overview -->
+        <div class="mb-8">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Agent Framework</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="agent-card agent-planner bg-white p-4 rounded-lg shadow">
+                    <div class="flex items-center mb-2">
+                        <i class="fas fa-tasks text-blue-600 mr-2"></i>
+                        <h3 class="font-medium text-gray-900">Planner Agent</h3>
+                    </div>
+                    <p class="text-sm text-gray-600">Analyzes queries and creates execution plans</p>
+                </div>
+                
+                <div class="agent-card agent-data bg-white p-4 rounded-lg shadow">
+                    <div class="flex items-center mb-2">
+                        <i class="fas fa-database text-green-600 mr-2"></i>
+                        <h3 class="font-medium text-gray-900">Data Worker Agent</h3>
+                    </div>
+                    <p class="text-sm text-gray-600">Performs calculations and data operations</p>
+                </div>
+                
+                <div class="agent-card agent-chart bg-white p-4 rounded-lg shadow">
+                    <div class="flex items-center mb-2">
+                        <i class="fas fa-chart-line text-amber-600 mr-2"></i>
+                        <h3 class="font-medium text-gray-900">Chart Agent</h3>
+                    </div>
+                    <p class="text-sm text-gray-600">Creates visualizations and charts</p>
+                </div>
+                
+                <div class="agent-card agent-explainer bg-white p-4 rounded-lg shadow">
+                    <div class="flex items-center mb-2">
+                        <i class="fas fa-comments text-purple-600 mr-2"></i>
+                        <h3 class="font-medium text-gray-900">Explainer Agent</h3>
+                    </div>
+                    <p class="text-sm text-gray-600">Generates insights and explanations</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Left Panel - File Upload & Chat -->
+            <div class="lg:col-span-1">
+                <!-- File Upload -->
+                <div class="bg-white rounded-lg shadow mb-6">
+                    <div class="p-4 border-b border-gray-200">
+                        <h3 class="font-medium text-gray-900">
+                            <i class="fas fa-upload mr-2"></i>Upload CSV File
+                        </h3>
+                    </div>
+                    <div class="p-4">
+                        <div id="upload-area" class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors cursor-pointer">
+                            <i class="fas fa-cloud-upload-alt text-3xl text-gray-400 mb-2"></i>
+                            <p class="text-sm text-gray-600">Drop CSV file here or click to browse</p>
+                            <p class="text-xs text-gray-500 mt-1">Maximum file size: 16MB</p>
+                            <input type="file" id="file-input" accept=".csv" class="hidden">
+                        </div>
+                        <div id="file-info" class="hidden mt-4 p-3 bg-blue-50 rounded-lg">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm font-medium text-blue-900" id="file-name"></p>
+                                    <p class="text-xs text-blue-700" id="file-details"></p>
+                                </div>
+                                <button id="remove-file" class="text-blue-600 hover:text-blue-800">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chat Interface -->
+                <div class="bg-white rounded-lg shadow">
+                    <div class="p-4 border-b border-gray-200">
+                        <h3 class="font-medium text-gray-900">
+                            <i class="fas fa-comments mr-2"></i>Ask Questions
+                        </h3>
+                    </div>
+                    <div class="flex flex-col h-96">
+                        <div id="chat-messages" class="flex-1 p-4 overflow-y-auto space-y-3">
+                            <div class="text-center text-gray-500 text-sm">
+                                <i class="fas fa-robot text-2xl mb-2"></i>
+                                <p>Upload a CSV file and start asking questions!</p>
+                            </div>
+                        </div>
+                        <div class="p-4 border-t border-gray-200">
+                            <div class="flex space-x-2">
+                                <input type="text" id="chat-input" placeholder="Ask about your data..." 
+                                    class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <button id="send-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                                    <i class="fas fa-paper-plane"></i>
+                                </button>
+                            </div>
+                            <div id="suggested-questions" class="mt-2 flex flex-wrap gap-2 hidden">
+                                <!-- Suggested questions will be added here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel - Results -->
+            <div class="lg:col-span-2">
+                <!-- Data Summary -->
+                <div id="data-summary" class="bg-white rounded-lg shadow mb-6 hidden">
+                    <div class="p-4 border-b border-gray-200">
+                        <h3 class="font-medium text-gray-900">
+                            <i class="fas fa-info-circle mr-2"></i>Data Summary
+                        </h3>
+                    </div>
+                    <div class="p-4">
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-blue-600" id="total-rows">-</div>
+                                <div class="text-sm text-gray-600">Rows</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-green-600" id="total-columns">-</div>
+                                <div class="text-sm text-gray-600">Columns</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-amber-600" id="numeric-columns">-</div>
+                                <div class="text-sm text-gray-600">Numeric</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-purple-600" id="categorical-columns">-</div>
+                                <div class="text-sm text-gray-600">Categorical</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Insights -->
+                <div id="insights-panel" class="bg-white rounded-lg shadow mb-6 hidden">
+                    <div class="p-4 border-b border-gray-200">
+                        <h3 class="font-medium text-gray-900">
+                            <i class="fas fa-lightbulb mr-2"></i>Key Insights
+                        </h3>
+                    </div>
+                    <div class="p-4">
+                        <div id="insights-content" class="space-y-3">
+                            <!-- Insights will be added here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts -->
+                <div id="charts-panel" class="bg-white rounded-lg shadow hidden">
+                    <div class="p-4 border-b border-gray-200">
+                        <h3 class="font-medium text-gray-900">
+                            <i class="fas fa-chart-line mr-2"></i>Visualizations
+                        </h3>
+                    </div>
+                    <div class="p-4">
+                        <div id="charts-container" class="space-y-6">
+                            <!-- Charts will be added here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Agent Pipeline -->
+                <div id="pipeline-panel" class="bg-white rounded-lg shadow mb-6 hidden">
+                    <div class="p-4 border-b border-gray-200">
+                        <h3 class="font-medium text-gray-900">
+                            <i class="fas fa-cogs mr-2"></i>Agent Pipeline
+                        </h3>
+                    </div>
+                    <div class="p-4">
+                        <div class="space-y-2">
+                            <div class="flex items-center justify-between p-2 bg-gray-50 rounded">
+                                <span class="text-sm font-medium">Planner Agent</span>
+                                <span class="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded" id="planner-status">Ready</span>
+                            </div>
+                            <div class="flex items-center justify-between p-2 bg-gray-50 rounded">
+                                <span class="text-sm font-medium">Data Worker Agent</span>
+                                <span class="text-xs px-2 py-1 bg-green-100 text-green-800 rounded" id="data-worker-status">Ready</span>
+                            </div>
+                            <div class="flex items-center justify-between p-2 bg-gray-50 rounded">
+                                <span class="text-sm font-medium">Chart Agent</span>
+                                <span class="text-xs px-2 py-1 bg-amber-100 text-amber-800 rounded" id="chart-status">Ready</span>
+                            </div>
+                            <div class="flex items-center justify-between p-2 bg-gray-50 rounded">
+                                <span class="text-sm font-medium">Explainer Agent</span>
+                                <span class="text-xs px-2 py-1 bg-purple-100 text-purple-800 rounded" id="explainer-status">Ready</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Global state
+        let currentFile = null;
+        let isProcessing = false;
+
+        // DOM elements
+        const uploadArea = document.getElementById('upload-area');
+        const fileInput = document.getElementById('file-input');
+        const fileInfo = document.getElementById('file-info');
+        const fileName = document.getElementById('file-name');
+        const fileDetails = document.getElementById('file-details');
+        const removeFileBtn = document.getElementById('remove-file');
+        const chatInput = document.getElementById('chat-input');
+        const sendBtn = document.getElementById('send-btn');
+        const chatMessages = document.getElementById('chat-messages');
+        const suggestedQuestions = document.getElementById('suggested-questions');
+
+        // File upload handlers
+        uploadArea.addEventListener('click', () => fileInput.click());
+        
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('border-blue-400', 'bg-blue-50');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('border-blue-400', 'bg-blue-50');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('border-blue-400', 'bg-blue-50');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileUpload(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileUpload(e.target.files[0]);
+            }
+        });
+
+        removeFileBtn.addEventListener('click', () => {
+            currentFile = null;
+            fileInfo.classList.add('hidden');
+            uploadArea.classList.remove('hidden');
+            resetDashboard();
+        });
+
+        // Chat handlers
+        sendBtn.addEventListener('click', sendMessage);
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        async function handleFileUpload(file) {
+            if (!file.name.endsWith('.csv')) {
+                showNotification('Please upload a CSV file', 'error');
+                return;
+            }
+
+            if (file.size > 16 * 1024 * 1024) {
+                showNotification('File too large. Maximum size is 16MB', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                showLoading('Uploading file...');
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    currentFile = result.filename;
+                    fileName.textContent = result.filename;
+                    fileDetails.textContent = `${result.info.shape[0]} rows × ${result.info.shape[1]} columns`;
+                    fileInfo.classList.remove('hidden');
+                    uploadArea.classList.add('hidden');
+                    
+                    updateDataSummary(result.info);
+                    showNotification('File uploaded successfully!', 'success');
+                    
+                    // Load initial insights
+                    loadInitialInsights();
+                } else {
+                    showNotification(result.error || 'Upload failed', 'error');
+                }
+            } catch (error) {
+                showNotification('Upload failed: ' + error.message, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function sendMessage() {
+            const message = chatInput.value.trim();
+            if (!message || !currentFile || isProcessing) return;
+
+            addUserMessage(message);
+            chatInput.value = '';
+            isProcessing = true;
+            sendBtn.disabled = true;
+
+            try {
+                updateAgentStatus('planner', 'Processing');
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ query: message })
+                });
+
+                const result = await response.json();
+
+                if (result.error) {
+                    addBotMessage(result.error, 'error');
+                } else {
+                    addBotMessage(result.final_response.text);
+                    updateInsights(result.final_response.insights);
+                    updateCharts(result.final_response.charts);
+                    updateSuggestions(result.followup_questions);
+                    updateConfidence(result.final_response.confidence_score);
+                }
+            } catch (error) {
+                addBotMessage('Error: ' + error.message, 'error');
+            } finally {
+                isProcessing = false;
+                sendBtn.disabled = false;
+                resetAgentStatus();
+            }
+        }
+
+        async function loadInitialInsights() {
+            try {
+                const response = await fetch('/insights');
+                const insights = await response.json();
+                
+                if (insights.error) {
+                    showNotification(insights.error, 'error');
+                } else {
+                    updateInsights(insights.insights);
+                    updateCharts(insights.charts);
+                }
+            } catch (error) {
+                console.error('Error loading insights:', error);
+            }
+        }
+
+        function updateDataSummary(info) {
+            document.getElementById('total-rows').textContent = info.shape[0];
+            document.getElementById('total-columns').textContent = info.shape[1];
+            
+            let numericCount = 0;
+            let categoricalCount = 0;
+            
+            for (let col in info.dtypes) {
+                if (info.dtypes[col].includes('int') || info.dtypes[col].includes('float')) {
+                    numericCount++;
+                } else {
+                    categoricalCount++;
+                }
+            }
+            
+            document.getElementById('numeric-columns').textContent = numericCount;
+            document.getElementById('categorical-columns').textContent = categoricalCount;
+            
+            document.getElementById('data-summary').classList.remove('hidden');
+            document.getElementById('pipeline-panel').classList.remove('hidden');
+        }
+
+        function updateInsights(insights) {
+            const container = document.getElementById('insights-content');
+            container.innerHTML = '';
+
+            if (insights.summary) {
+                const summaryDiv = document.createElement('div');
+                summaryDiv.className = 'p-3 bg-blue-50 rounded-lg';
+                summaryDiv.innerHTML = `
+                    <h4 class="font-medium text-blue-900 mb-2">Summary</h4>
+                    <p class="text-sm text-blue-800">${insights.summary.dataset_overview ? 
+                        `Dataset contains ${insights.summary.dataset_overview.total_records} records with ${insights.summary.dataset_overview.data_completeness.toFixed(1)}% completeness.` : 
+                        'No summary available'}</p>
+                `;
+                container.appendChild(summaryDiv);
+            }
+
+            if (insights.key_findings && insights.key_findings.length > 0) {
+                const findingsDiv = document.createElement('div');
+                findingsDiv.className = 'p-3 bg-green-50 rounded-lg';
+                findingsDiv.innerHTML = `
+                    <h4 class="font-medium text-green-900 mb-2">Key Findings</h4>
+                    <ul class="text-sm text-green-800 space-y-1">
+                        ${insights.key_findings.map(finding => `<li>• ${finding}</li>`).join('')}
+                    </ul>
+                `;
+                container.appendChild(findingsDiv);
+            }
+
+            if (insights.recommendations && insights.recommendations.length > 0) {
+                const recDiv = document.createElement('div');
+                recDiv.className = 'p-3 bg-amber-50 rounded-lg';
+                recDiv.innerHTML = `
+                    <h4 class="font-medium text-amber-900 mb-2">Recommendations</h4>
+                    <ul class="text-sm text-amber-800 space-y-1">
+                        ${insights.recommendations.map(rec => `<li>• ${rec}</li>`).join('')}
+                    </ul>
+                `;
+                container.appendChild(recDiv);
+            }
+
+            document.getElementById('insights-panel').classList.remove('hidden');
+        }
+
+        function updateCharts(charts) {
+            const container = document.getElementById('charts-container');
+            container.innerHTML = '';
+
+            Object.entries(charts).forEach(([chartName, chartData]) => {
+                if (chartData.error) {
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'p-3 bg-red-50 rounded-lg text-red-800 text-sm';
+                    errorDiv.textContent = `Chart error: ${chartData.error}`;
+                    container.appendChild(errorDiv);
+                    return;
+                }
+
+                const chartDiv = document.createElement('div');
+                chartDiv.className = 'chart-container';
+                chartDiv.id = `chart-${chartName}`;
+                container.appendChild(chartDiv);
+
+                // Render Plotly chart
+                Plotly.newPlot(chartDiv.id, chartData.data, chartData.layout, chartData.config);
+            });
+
+            if (Object.keys(charts).length > 0) {
+                document.getElementById('charts-panel').classList.remove('hidden');
+            }
+        }
+
+        function updateSuggestions(questions) {
+            suggestedQuestions.innerHTML = '';
+            suggestedQuestions.classList.add('hidden');
+
+            if (questions && questions.length > 0) {
+                questions.forEach(question => {
+                    const btn = document.createElement('button');
+                    btn.className = 'px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded-full hover:bg-gray-200';
+                    btn.textContent = question;
+                    btn.addEventListener('click', () => {
+                        chatInput.value = question;
+                        sendMessage();
+                    });
+                    suggestedQuestions.appendChild(btn);
+                });
+                suggestedQuestions.classList.remove('hidden');
+            }
+        }
+
+        function updateConfidence(score) {
+            // You could display confidence score somewhere
+            console.log('Analysis confidence:', score);
+        }
+
+        function updateAgentStatus(agent, status) {
+            const statusElement = document.getElementById(`${agent}-status`);
+            if (statusElement) {
+                statusElement.textContent = status;
+                statusElement.className = statusElement.className.replace(/bg-\w+-100 text-\w+-800/g, '');
+                
+                if (status === 'Processing') {
+                    statusElement.classList.add('bg-yellow-100', 'text-yellow-800');
+                } else if (status === 'Complete') {
+                    statusElement.classList.add('bg-green-100', 'text-green-800');
+                } else {
+                    statusElement.classList.add('bg-gray-100', 'text-gray-800');
+                }
+            }
+        }
+
+        function resetAgentStatus() {
+            ['planner', 'data-worker', 'chart', 'explainer'].forEach(agent => {
+                updateAgentStatus(agent, 'Ready');
+            });
+        }
+
+        function addUserMessage(message) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'chat-message flex justify-end';
+            messageDiv.innerHTML = `
+                <div class="max-w-xs lg:max-w-md px-4 py-2 bg-blue-600 text-white rounded-lg">
+                    <p class="text-sm">${message}</p>
+                </div>
+            `;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function addBotMessage(message, type = 'normal') {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'chat-message flex justify-start';
+            
+            const bgColor = type === 'error' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800';
+            
+            messageDiv.innerHTML = `
+                <div class="max-w-xs lg:max-w-md px-4 py-2 ${bgColor} rounded-lg">
+                    <p class="text-sm">${message}</p>
+                </div>
+            `;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function showNotification(message, type = 'info') {
+            // Simple notification - you could enhance this
+            console.log(`${type.toUpperCase()}: ${message}`);
+        }
+
+        function showLoading(message) {
+            addBotMessage(message + '<span class="loading-dots"></span>');
+        }
+
+        function hideLoading() {
+            // Remove loading message if exists
+            const loadingMsg = chatMessages.querySelector('.loading-dots');
+            if (loadingMsg) {
+                loadingMsg.closest('.chat-message').remove();
+            }
+        }
+
+        function resetDashboard() {
+            document.getElementById('data-summary').classList.add('hidden');
+            document.getElementById('insights-panel').classList.add('hidden');
+            document.getElementById('charts-panel').classList.add('hidden');
+            document.getElementById('pipeline-panel').classList.add('hidden');
+            chatMessages.innerHTML = `
+                <div class="text-center text-gray-500 text-sm">
+                    <i class="fas fa-robot text-2xl mb-2"></i>
+                    <p>Upload a CSV file and start asking questions!</p>
+                </div>
+            `;
+        }
+
+        // Initialize
+        resetDashboard();
+    </script>
+</body>
+</html>

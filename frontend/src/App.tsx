@@ -9,7 +9,7 @@ import {
   ScanLine, Network, Star, Play, Zap, TrendingUp, Activity,
   Filter, Calendar, ArrowUpRight, ArrowDownRight, BarChart2,
   PieChart as PieIcon, GitCommit, List, Trash2, RotateCcw,
-  Wifi, WifiOff, Package, Info, Tag
+  Wifi, WifiOff, Package, Info, Tag, Home
 } from 'lucide-react'
 import {
   AreaChart, Area, BarChart, Bar, LineChart as ReLineChart, Line,
@@ -24,6 +24,7 @@ import { AuthModal } from './components/AuthModal'
 import { SQLTerminal } from './components/SQLTerminal'
 import { ArchitecturePage } from './components/ArchitecturePage'
 import { PricingPage } from './components/PricingPage'
+import { LandingPage } from './components/LandingPage'
 
 // ─── Static / Fallback Data ──────────────────────────────────────────────────
 
@@ -77,6 +78,7 @@ const DEFAULT_PROMPTS = [
 ]
 
 const navItems = [
+  { icon: Home, label: 'Home Page', id: 'home' },
   { icon: LayoutDashboard, label: 'Dashboard', id: 'dashboard' },
   { icon: Upload, label: 'Upload Dataset', id: 'upload' },
   { icon: MessageSquare, label: 'AI Chat', id: 'chat' },
@@ -1845,7 +1847,7 @@ function RightPanel() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function AppInner() {
-  const [activeNav, setActiveNav] = useState('dashboard')
+  const [activeNav, setActiveNav] = useState('home')
   const [darkMode, setDarkMode] = useState(true)
   const [currentUser, setCurrentUser] = useState<api.UserProfile | null>(null)
   const [isAuthOpen, setIsAuthOpen] = useState(false)
@@ -1864,6 +1866,15 @@ function AppInner() {
   // Page router
   const renderPage = () => {
     switch (activeNav) {
+      case 'home':
+        return (
+          <LandingPage
+            onLaunchApp={() => setActiveNav('dashboard')}
+            onLoadDemo={() => setActiveNav('upload')}
+            onOpenAuth={() => setIsAuthOpen(true)}
+            onNav={setActiveNav}
+          />
+        )
       case 'dashboard':    return <DashboardPage onNav={setActiveNav} />
       case 'upload':       return <UploadPage onNav={setActiveNav} />
       case 'chat':         return <ChatPage onNav={setActiveNav} />
@@ -1878,6 +1889,19 @@ function AppInner() {
       case 'settings':     return <SettingsPage />
       default:             return <DashboardPage onNav={setActiveNav} />
     }
+  }
+
+  if (activeNav === 'home') {
+    return (
+      <div style={{ background: '#FAF9F6', minHeight: '100vh', color: '#0F172A' }}>
+        {renderPage()}
+        <AuthModal
+          isOpen={isAuthOpen}
+          onClose={() => setIsAuthOpen(false)}
+          onSuccess={user => setCurrentUser(user)}
+        />
+      </div>
+    )
   }
 
   return (

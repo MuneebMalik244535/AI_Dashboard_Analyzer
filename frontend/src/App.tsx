@@ -393,9 +393,34 @@ function UploadPage({ onNav }: { onNav: (id: string) => void }) {
     } finally { setUploading(false) }
   }
 
+  const handleSampleUpload = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setError(null)
+    setUploading(true)
+    setProgress(15)
+    const iv = setInterval(() => setProgress(p => Math.min(p + 10, 90)), 100)
+
+    try {
+      const result = await api.uploadSampleDataset()
+      clearInterval(iv)
+      setProgress(100)
+      await new Promise(r => setTimeout(r, 200))
+      setUploadedFile({ filename: result.filename, sessionId: result.session_id, info: result.info })
+      pushActivity({ label: `Sample dataset loaded: ${result.filename}`, time: 'just now', status: 'completed', agentKey: 'upload' })
+      if (result.initial_insights) {
+        setInsightsResponse(result.initial_insights)
+      }
+    } catch (e: any) {
+      clearInterval(iv)
+      setError(e.message ?? 'Sample upload failed.')
+    } finally {
+      setUploading(false)
+    }
+  }
+
   return (
     <div>
-      <PageHeader title="Upload Dataset" subtitle="Upload your CSV file and let AI agents analyze it automatically">
+      <PageHeader title="Upload Dataset" subtitle="Upload your CSV file or test with 1-click enterprise demo dataset">
         {uploadedFile && (
           <button onClick={() => { setUploadedFile(null); setProgress(0) }}
             className="flex items-center gap-2 rounded-xl px-4 py-2 hover-lift"
@@ -432,6 +457,19 @@ function UploadPage({ onNav }: { onNav: (id: string) => void }) {
                 <span key={f} className="px-3 py-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.05)', fontSize: 12, color: '#71717A', fontFamily: 'JetBrains Mono, monospace' }}>{f}</span>
               ))}
             </div>
+
+            {/* 1-Click Demo Dataset Button */}
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={handleSampleUpload}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-xs transition-all hover:scale-105 cursor-pointer shadow-lg shadow-indigo-500/20"
+                style={{ background: 'linear-gradient(135deg, #6366F1, #4F46E5)', color: '#fff', border: 'none' }}
+              >
+                <Sparkles size={15} /> ⚡ Load 1-Click Demo E-Commerce Dataset
+              </button>
+            </div>
+
             {error && (
               <div className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)' }}>
                 <AlertTriangle size={14} color="#EF4444" />

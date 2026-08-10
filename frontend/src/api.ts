@@ -214,6 +214,20 @@ export async function uploadFile(file: File): Promise<UploadResponse> {
   return res.json()
 }
 
+export async function uploadSampleDataset(): Promise<UploadResponse> {
+  const res = await fetch(`${BASE}/upload/sample`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  })
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as any)?.detail ?? `Sample dataset upload failed (${res.status})`)
+  }
+
+  return res.json()
+}
+
 export async function sendChat(query: string, sessionId: string): Promise<ChatResponse> {
   const res = await fetch(`${BASE}/chat`, {
     method: 'POST',

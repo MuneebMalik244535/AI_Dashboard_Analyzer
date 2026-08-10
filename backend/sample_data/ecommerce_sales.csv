@@ -1,0 +1,16 @@
+Order_ID,Order_Date,Store_Location,Product_Category,Revenue,Profit,Quantity,Customer_Segment
+ORD-1001,2026-01-05,London Flagship,Electronics,450.00,135.00,2,Enterprise
+ORD-1002,2026-01-06,Manchester West,Furniture,850.00,255.00,1,Mid-Market
+ORD-1003,2026-01-07,London Flagship,Office Supplies,120.50,36.15,5,SMB
+ORD-1004,2026-01-08,Birmingham Central,Electronics,1200.00,360.00,3,Enterprise
+ORD-1005,2026-01-09,Glasgow North,Technology,340.00,102.00,2,Startup
+ORD-1006,2026-01-10,London Flagship,Furniture,620.00,186.00,1,Enterprise
+ORD-1007,2026-01-11,Manchester West,Electronics,290.00,87.00,4,SMB
+ORD-1008,2026-01-12,Birmingham Central,Office Supplies,95.00,28.50,10,Startup
+ORD-1009,2026-01-13,London Flagship,Technology,1450.00,435.00,2,Enterprise
+ORD-1010,2026-01-14,Glasgow North,Furniture,510.00,153.00,1,Mid-Market
+ORD-1011,2026-01-15,London Flagship,Electronics,890.00,267.00,3,Enterprise
+ORD-1012,2026-01-16,Manchester West,Technology,1100.00,330.00,2,Enterprise
+ORD-1013,2026-01-17,Birmingham Central,Furniture,430.00,129.00,1,SMB
+ORD-1014,2026-01-18,London Flagship,Office Supplies,210.00,63.00,7,Startup
+ORD-1015,2026-01-19,Glasgow North,Electronics,780.00,234.00,2,Enterprise

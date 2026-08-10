@@ -500,6 +500,45 @@ async def get_prometheus_metrics():
     from utils.metrics import get_metrics_response
     return get_metrics_response()
 
+@app.post("/upload/sample")
+async def upload_sample_dataset(db: DBSession = Depends(get_db)):
+    try:
+        sample_path = os.path.join(os.path.dirname(__file__), "sample_data", "ecommerce_sales.csv")
+        if not os.path.exists(sample_path):
+            raise HTTPException(status_code=404, detail="Sample dataset not found")
+        
+        session_id = str(uuid.uuid4())
+        filename = "ecommerce_sales_sample.csv"
+
+        df, info = load_dataset(sample_path)
+
+        # DB persistence
+        db_session = SessionModel(
+            id=session_id,
+            filename=filename,
+            user_id=None
+        )
+        db.add(db_session)
+        db.commit()
+
+        sessions[session_id] = df
+
+        # Execute 4-Agent Insights
+        initial_insights = coordinator.run_full_analysis(
+            df=df,
+            filename=filename,
+            session_id=session_id
+        )
+
+        return {
+            "session_id": session_id,
+            "filename": filename,
+            "info": info,
+            "initial_insights": initial_insights
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

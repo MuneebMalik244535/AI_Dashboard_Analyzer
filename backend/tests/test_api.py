@@ -37,3 +37,13 @@ def test_upload_and_chat_flow(client):
     summary_res = client.get(f"/data/summary/{session_id}")
     assert summary_res.status_code == 200
     assert summary_res.json()["basic_info"]["rows"] == 3
+
+    # Test SQL Endpoint
+    sql_res = client.post("/data/sql", json={
+        "session_id": session_id,
+        "query": "SELECT store_location, SUM(revenue) AS total FROM dataset GROUP BY store_location"
+    })
+    assert sql_res.status_code == 200
+    sql_data = sql_res.json()
+    assert sql_data["success"] is True
+    assert sql_data["rows_returned"] == 3

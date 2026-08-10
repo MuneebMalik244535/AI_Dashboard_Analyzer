@@ -96,15 +96,23 @@ app.add_middleware(
 UPLOAD_FOLDER = "uploads"
 MAX_FILE_SIZE = 16 * 1024 * 1024  # 16MB
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+from utils.file_handler import FileHandler
+from utils.agent_coordinator import AgentCoordinator
+from utils.duckdb_engine import DuckDBEngine
 
-# Initialize agents
+# Initialize engines
 coordinator = AgentCoordinator()
 file_handler = FileHandler()
+duckdb_engine = DuckDBEngine()
 
 # Pydantic models
 class ChatRequest(BaseModel):
     query: str
     session_id: str
+
+class SQLQueryRequest(BaseModel):
+    session_id: str
+    query: str
 
 class ChatResponse(BaseModel):
     query: str
@@ -408,6 +416,25 @@ async def get_data_summary(session_id: str, db: DBSession = Depends(get_db)):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/data/sql")
+@limiter.limit("15/minute")
+async def execute_sql_query(
+    request: Request,
+    sql_req: SQLQueryRequest,
+    db: DBSession = Depends(get_db)
+):
+    try:
+        df = load_dataframe_from_db(sql_req.session_id, db)
+        result = duckdb_engine.execute_query(sql_req.query, df=df, table_name="dataset")
+        return JSONResponse(content=sanitize_for_json(result))
+    except HTTPException:
+        raise
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content=sanitize_for_json({"success": False, "query": sql_req.query, "error": str(e)})
+        )
 
 if __name__ == "__main__":
     import uvicorn

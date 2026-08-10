@@ -100,12 +100,14 @@ from utils.file_handler import FileHandler
 from utils.agent_coordinator import AgentCoordinator
 from utils.duckdb_engine import DuckDBEngine
 from utils.pdf_generator import PDFReportGenerator
+from utils.excel_exporter import ExcelWorkbookExporter
 
 # Initialize engines
 coordinator = AgentCoordinator()
 file_handler = FileHandler()
 duckdb_engine = DuckDBEngine()
 pdf_generator = PDFReportGenerator()
+excel_exporter = ExcelWorkbookExporter()
 
 # Pydantic models
 class ChatRequest(BaseModel):
@@ -462,6 +464,31 @@ async def generate_pdf_report(session_id: str, db: DBSession = Depends(get_db)):
             content=pdf_bytes,
             media_type="application/pdf",
             headers={"Content-Disposition": f"attachment; filename=Report_{db_session.filename}.pdf"}
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/reports/excel/{session_id}")
+async def generate_excel_report(session_id: str, db: DBSession = Depends(get_db)):
+    try:
+        db_session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+        if not db_session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        df = load_dataframe_from_db(session_id, db)
+        worker_kpis = coordinator.data_worker._calculate_business_kpis(df)
+        
+        excel_bytes = excel_exporter.generate_excel_workbook(
+            filename=db_session.filename,
+            df=df,
+            kpis=worker_kpis
+        )
+        return Response(
+            content=excel_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=Analysis_{db_session.filename}.xlsx"}
         )
     except HTTPException:
         raise

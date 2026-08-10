@@ -495,6 +495,11 @@ async def generate_excel_report(session_id: str, db: DBSession = Depends(get_db)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/metrics")
+async def get_prometheus_metrics():
+    from utils.metrics import get_metrics_response
+    return get_metrics_response()
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

@@ -1,4 +1,26 @@
+version: '3.8'
+
 services:
+  # Database Service (PostgreSQL Production ORM Storage)
+  db:
+    image: postgres:15-alpine
+    container_name: ai_dashboard_db
+    restart: always
+    environment:
+      POSTGRES_USER: dashboard_user
+      POSTGRES_PASSWORD: dashboard_secure_password
+      POSTGRES_DB: ai_dashboard
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dashboard_user -d ai_dashboard"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI Backend Service
   backend:
     build:
       context: ./backend
@@ -7,11 +29,18 @@ services:
     restart: always
     ports:
       - "8000:8000"
+    environment:
+      - PORT=8000
+      - DATABASE_URL=postgresql://dashboard_user:dashboard_secure_password@db:5432/ai_dashboard
     env_file:
       - ./backend/.env
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
       - ./backend/uploads:/app/uploads
 
+  # React Vite Frontend Service
   frontend:
     build:
       context: ./frontend
@@ -23,6 +52,5 @@ services:
     depends_on:
       - backend
 
-networks:
-  default:
-    name: ai_dashboard_network
+volumes:
+  postgres_data:

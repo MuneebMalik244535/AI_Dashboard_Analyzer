@@ -31,7 +31,7 @@ class AgentCoordinator:
         self.explainer   = ExplainerAgent()
         self.execution_history: List[Dict[str, Any]] = []
 
-    def process_query(self, user_query: str, df: pd.DataFrame) -> Dict[str, Any]:
+    def process_query(self, user_query: str, df: pd.DataFrame, chat_history: List[Dict[str, str]] = None) -> Dict[str, Any]:
         """Run the 4-agent collaborative pipeline for a user query."""
         results: Dict[str, Any] = {
             'query':             user_query,
@@ -41,6 +41,7 @@ class AgentCoordinator:
             'followup_questions': [],
             'agent_logs':        [],
             'agent_messages':    [],
+            'chat_history':      chat_history or [],
         }
 
         try:

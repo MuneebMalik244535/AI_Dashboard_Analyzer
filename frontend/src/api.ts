@@ -3,7 +3,40 @@
 
 const BASE = '/api'
 
+export function getAuthToken(): string | null {
+  return localStorage.getItem('auth_token')
+}
+
+export function setAuthToken(token: string): void {
+  localStorage.setItem('auth_token', token)
+}
+
+export function removeAuthToken(): void {
+  localStorage.removeItem('auth_token')
+}
+
+function getAuthHeaders(headers: Record<string, string> = {}): Record<string, string> {
+  const token = getAuthToken()
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  return headers
+}
+
 // ─── Response Types ───────────────────────────────────────────────────────────
+
+export interface UserProfile {
+  id: string
+  email: string
+  full_name?: string
+  created_at: string
+}
+
+export interface AuthResponse {
+  access_token: string
+  token_type: string
+  user: UserProfile
+}
 
 export interface FileInfo {
   shape: [number, number]
@@ -112,7 +145,56 @@ export interface ChatResponse {
 
 export interface InsightsResponse extends ChatResponse {}
 
-// ─── API Functions ────────────────────────────────────────────────────────────
+// ─── Auth API Functions ───────────────────────────────────────────────────────
+
+export async function registerUser(email: string, password: string, fullName?: string): Promise<AuthResponse> {
+  const res = await fetch(`${BASE}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, full_name: fullName }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as any)?.detail ?? 'Registration failed')
+  }
+  const data: AuthResponse = await res.json()
+  setAuthToken(data.access_token)
+  return data
+}
+
+export async function loginUser(email: string, password: string): Promise<AuthResponse> {
+  const res = await fetch(`${BASE}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as any)?.detail ?? 'Login failed')
+  }
+  const data: AuthResponse = await res.json()
+  setAuthToken(data.access_token)
+  return data
+}
+
+export async function getMe(): Promise<UserProfile | null> {
+  const token = getAuthToken()
+  if (!token) return null
+  try {
+    const res = await fetch(`${BASE}/auth/me`, {
+      headers: getAuthHeaders(),
+    })
+    if (!res.ok) {
+      removeAuthToken()
+      return null
+    }
+    return res.json()
+  } catch {
+    return null
+  }
+}
+
+// ─── Data API Functions ───────────────────────────────────────────────────────
 
 export async function uploadFile(file: File): Promise<UploadResponse> {
   const form = new FormData()
@@ -120,6 +202,7 @@ export async function uploadFile(file: File): Promise<UploadResponse> {
 
   const res = await fetch(`${BASE}/upload`, {
     method: 'POST',
+    headers: getAuthHeaders(),
     body: form,
   })
 
@@ -134,7 +217,7 @@ export async function uploadFile(file: File): Promise<UploadResponse> {
 export async function sendChat(query: string, sessionId: string): Promise<ChatResponse> {
   const res = await fetch(`${BASE}/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ query, session_id: sessionId }),
   })
 
@@ -147,7 +230,9 @@ export async function sendChat(query: string, sessionId: string): Promise<ChatRe
 }
 
 export async function getInsights(sessionId: string): Promise<InsightsResponse> {
-  const res = await fetch(`${BASE}/insights/${encodeURIComponent(sessionId)}`)
+  const res = await fetch(`${BASE}/insights/${encodeURIComponent(sessionId)}`, {
+    headers: getAuthHeaders(),
+  })
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
@@ -158,7 +243,9 @@ export async function getInsights(sessionId: string): Promise<InsightsResponse> 
 }
 
 export async function getDataSummary(sessionId: string): Promise<Record<string, unknown>> {
-  const res = await fetch(`${BASE}/data/summary/${encodeURIComponent(sessionId)}`)
+  const res = await fetch(`${BASE}/data/summary/${encodeURIComponent(sessionId)}`, {
+    headers: getAuthHeaders(),
+  })
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))

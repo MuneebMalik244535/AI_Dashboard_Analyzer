@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -12,13 +12,17 @@ from datetime import datetime
 import json
 import logging
 
-# Configure logging so debug prints are visible in the console
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from sqlalchemy.orm import Session as DBSession
+
+# Configure logging
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
-
 
 def sanitize_for_json(obj: Any) -> Any:
     """Recursively convert numpy/pandas types to native Python types."""
@@ -40,6 +44,13 @@ def sanitize_for_json(obj: Any) -> Any:
         return None
     return obj
 
+from database import engine, Base, get_db
+from models import User, SessionModel, ChatMessageModel
+from auth import (
+    UserCreate, UserLogin, UserResponse, Token,
+    verify_password, get_password_hash, create_access_token,
+    get_current_user, get_current_user_optional
+)
 from agents.planner_agent import PlannerAgent
 from agents.data_worker_agent import DataWorkerAgent
 from agents.chart_agent import ChartAgent
@@ -47,11 +58,21 @@ from agents.explainer_agent import ExplainerAgent
 from utils.file_handler import FileHandler
 from utils.agent_coordinator import AgentCoordinator
 
+# Rate Limiter setup
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(
     title="AI Data Dashboard API",
-    description="Multi-agent data analysis API",
-    version="1.0.0"
+    description="Multi-agent data analysis API with enterprise auth, persistence, and security.",
+    version="2.0.0"
 )
+
+@app.on_event("startup")
+def on_startup():
+    Base.metadata.create_all(bind=engine)
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Configure CORS
 app.add_middleware(
@@ -63,6 +84,8 @@ app.add_middleware(
         "http://localhost:5173",   # Vite fallback
         "http://127.0.0.1:8443",
         "http://127.0.0.1:5173",
+        "http://localhost",
+        "http://localhost:80"
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -73,9 +96,6 @@ app.add_middleware(
 UPLOAD_FOLDER = "uploads"
 MAX_FILE_SIZE = 16 * 1024 * 1024  # 16MB
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-# In-memory session storage (in production, use Redis or database)
-sessions: Dict[str, Dict[str, Any]] = {}
 
 # Initialize agents
 coordinator = AgentCoordinator()
@@ -102,88 +122,126 @@ class UploadResponse(BaseModel):
     info: Dict[str, Any]
     error: Optional[str] = None
 
-class SessionInfo(BaseModel):
-    session_id: str
-    filename: str
-    uploaded_at: str
-    file_info: Dict[str, Any]
-
 # Helper functions
 def get_session_path(session_id: str) -> str:
     return os.path.join(UPLOAD_FOLDER, f"{session_id}.csv")
 
-def create_session(filename: str, df: pd.DataFrame) -> str:
+def get_or_create_guest_user(db: DBSession) -> User:
+    guest_email = "guest@aidashboard.local"
+    user = db.query(User).filter(User.email == guest_email).first()
+    if not user:
+        user = User(
+            id="guest-user-id",
+            email=guest_email,
+            hashed_password=get_password_hash("guest-password"),
+            full_name="Guest User",
+            is_active=True
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    return user
+
+def create_db_session(
+    filename: str,
+    df: pd.DataFrame,
+    db: DBSession,
+    user: Optional[User] = None
+) -> SessionModel:
     session_id = str(uuid.uuid4())
     session_path = get_session_path(session_id)
     df.to_csv(session_path, index=False)
 
-    # Sanitize all values so Timestamps/numpy types serialize cleanly to JSON
-    sessions[session_id] = {
-        'filename': filename,
-        'uploaded_at': datetime.now().isoformat(),
-        'file_info': sanitize_for_json({
-            'shape': list(df.shape),
-            'columns': df.columns.tolist(),
-            'dtypes': {col: str(dtype) for col, dtype in df.dtypes.items()},
-            'head': df.head().to_dict('records')
-        })
-    }
+    if not user:
+        user = get_or_create_guest_user(db)
 
-    return session_id
+    file_info = sanitize_for_json({
+        'shape': list(df.shape),
+        'columns': df.columns.tolist(),
+        'dtypes': {col: str(dtype) for col, dtype in df.dtypes.items()},
+        'head': df.head().to_dict('records')
+    })
 
-def load_dataframe(session_id: str) -> pd.DataFrame:
-    """
-    Load the session CSV and re-apply type cleaning.
+    db_session = SessionModel(
+        id=session_id,
+        user_id=user.id,
+        filename=filename,
+        file_path=session_path,
+        uploaded_at=datetime.utcnow()
+    )
+    db_session.file_info = file_info
 
-    BUG FIX: Previously this called bare pd.read_csv() which returns all
-    columns as object/float64 based on naive inference — no datetime parsing,
-    no numeric coercion guard.  After the upload path writes the cleaned df
-    back to disk, reloading without clean_dataframe() means the chat endpoint
-    receives un-typed data and the AI sees NaN-filled numeric columns.
+    db.add(db_session)
+    db.commit()
+    db.refresh(db_session)
 
-    FIX: Always run file_handler.clean_dataframe() after reading from disk so
-    every downstream agent (DataWorker, Explainer, Planner) gets a fully
-    typed DataFrame identical to what was originally cleaned at upload time.
-    """
-    session_path = get_session_path(session_id)
-    if not os.path.exists(session_path):
-        raise HTTPException(status_code=404, detail="Session not found")
+    return db_session
 
-    # Step 1: read raw CSV
-    df = pd.read_csv(session_path)
+def load_dataframe_from_db(session_id: str, db: DBSession) -> pd.DataFrame:
+    db_session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+    if not db_session or not os.path.exists(db_session.file_path):
+        raise HTTPException(status_code=404, detail="Session or file not found")
 
-    # ── DEBUG: print full pipeline diagnostics ─────────────────────────────
-    logger.debug("=== load_dataframe RAW (before clean) ===")
-    logger.debug("Shape: %s", df.shape)
-    logger.debug("dtypes:\n%s", df.dtypes)
-    logger.debug("isnull().sum():\n%s", df.isnull().sum())
-    logger.debug("head():\n%s", df.head().to_string())
-    # ───────────────────────────────────────────────────────────────────────
-
-    # Step 2: re-apply cleaning so numeric columns get proper float64 dtype
+    df = pd.read_csv(db_session.file_path)
     df = file_handler.clean_dataframe(df)
-
-    # ── DEBUG: print diagnostics after cleaning ────────────────────────────
-    logger.debug("=== load_dataframe CLEANED (after clean) ===")
-    logger.debug("Shape: %s", df.shape)
-    logger.debug("dtypes:\n%s", df.dtypes)
-    logger.debug("isnull().sum():\n%s", df.isnull().sum())
-    logger.debug("describe(include='all'):\n%s", df.describe(include='all').to_string())
-    logger.debug("head():\n%s", df.head().to_string())
-    # ───────────────────────────────────────────────────────────────────────
-
     return df
 
-def validate_session(session_id: str):
-    if session_id not in sessions:
-        raise HTTPException(status_code=404, detail="Session not found")
+# ─── Auth Endpoints ─────────────────────────────────────────────────────────
 
-# API Endpoints
+@app.post("/auth/register", response_model=Token)
+def register(user_data: UserCreate, db: DBSession = Depends(get_db)):
+    existing = db.query(User).filter(User.email == user_data.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    user = User(
+        email=user_data.email,
+        hashed_password=get_password_hash(user_data.password),
+        full_name=user_data.full_name
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    token = create_access_token({"sub": user.id})
+    user_resp = UserResponse(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        created_at=user.created_at.isoformat()
+    )
+    return Token(access_token=token, user=user_resp)
+
+@app.post("/auth/login", response_model=Token)
+def login(login_data: UserLogin, db: DBSession = Depends(get_db)):
+    user = db.query(User).filter(User.email == login_data.email).first()
+    if not user or not verify_password(login_data.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Incorrect email or password")
+
+    token = create_access_token({"sub": user.id})
+    user_resp = UserResponse(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        created_at=user.created_at.isoformat()
+    )
+    return Token(access_token=token, user=user_resp)
+
+@app.get("/auth/me", response_model=UserResponse)
+def get_me(current_user: User = Depends(get_current_user)):
+    return UserResponse(
+        id=current_user.id,
+        email=current_user.email,
+        full_name=current_user.full_name,
+        created_at=current_user.created_at.isoformat()
+    )
+
+# ─── Data & Analysis Endpoints ───────────────────────────────────────────────
+
 @app.get("/")
 async def root():
     return {
-        "message": "AI Data Dashboard API",
-        "version": "1.0.0",
+        "message": "AI Data Dashboard API v2.0 (Enterprise Ready)",
         "status": "running"
     }
 
@@ -196,100 +254,102 @@ async def health_check():
     }
 
 @app.post("/upload", response_model=UploadResponse)
-async def upload_file(file: UploadFile = File(...)):
-    # Validate file
+@limiter.limit("10/minute")
+async def upload_file(
+    request: Request,
+    file: UploadFile = File(...),
+    db: DBSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional)
+):
     if not file.filename.endswith('.csv'):
         return UploadResponse(
-            success=False,
-            filename="",
-            session_id="",
-            info={},
+            success=False, filename="", session_id="", info={},
             error="Please upload a CSV file"
         )
     
-    # Check file size
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
         return UploadResponse(
-            success=False,
-            filename="",
-            session_id="",
-            info={},
+            success=False, filename="", session_id="", info={},
             error="File too large. Maximum size is 16MB"
         )
     
     try:
-        # Decode with UTF-8; fall back to latin-1 for non-UTF-8 CSVs
         try:
             text = content.decode('utf-8')
         except UnicodeDecodeError:
             text = content.decode('latin-1')
         df = pd.read_csv(io.StringIO(text))
-
-        # ── DEBUG: log raw CSV parse result ───────────────────────────────
-        logger.debug("=== UPLOAD: raw pd.read_csv() ===")
-        logger.debug("Shape: %s", df.shape)
-        logger.debug("dtypes:\n%s", df.dtypes)
-        logger.debug("isnull().sum():\n%s", df.isnull().sum())
-        logger.debug("head():\n%s", df.head().to_string())
-        # ─────────────────────────────────────────────────────────────────
-
         df = file_handler.clean_dataframe(df)
 
-        # ── DEBUG: log cleaned result ──────────────────────────────────────
-        logger.debug("=== UPLOAD: after clean_dataframe() ===")
-        logger.debug("Shape: %s", df.shape)
-        logger.debug("dtypes:\n%s", df.dtypes)
-        logger.debug("isnull().sum():\n%s", df.isnull().sum())
-        logger.debug("describe(include='all'):\n%s", df.describe(include='all').to_string())
-        logger.debug("head():\n%s", df.head().to_string())
-        # ─────────────────────────────────────────────────────────────────
-        
-        # Create session
-        session_id = create_session(file.filename, df)
+        db_session = create_db_session(file.filename, df, db, current_user)
         
         return UploadResponse(
             success=True,
             filename=file.filename,
-            session_id=session_id,
-            info=sessions[session_id]['file_info']
+            session_id=db_session.id,
+            info=db_session.file_info
         )
-    
     except Exception as e:
+        logger.exception("Upload failed")
         return UploadResponse(
-            success=False,
-            filename="",
-            session_id="",
-            info={},
+            success=False, filename="", session_id="", info={},
             error=f"Error processing file: {str(e)}"
         )
 
 @app.post("/chat")
-async def chat(request: ChatRequest):
+@limiter.limit("20/minute")
+async def chat(
+    request: Request,
+    chat_req: ChatRequest,
+    db: DBSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional)
+):
     try:
-        # Validate session
-        validate_session(request.session_id)
+        df = load_dataframe_from_db(chat_req.session_id, db)
 
-        # Load dataframe
-        df = load_dataframe(request.session_id)
+        # Retrieve chat history for context
+        past_msgs = db.query(ChatMessageModel).filter(
+            ChatMessageModel.session_id == chat_req.session_id
+        ).order_by(ChatMessageModel.created_at.asc()).all()
 
-        # Process query through agent system
-        response = coordinator.process_query(request.query, df)
+        chat_history = [{"role": msg.role, "content": msg.content} for msg in past_msgs[-6:]]
 
-        # Hoist confidence_score to top-level to match the original ChatResponse shape
+        # Process query through 4-agent coordinator
+        response = coordinator.process_query(chat_req.query, df, chat_history=chat_history)
+
         if 'confidence_score' not in response:
             response['confidence_score'] = response.get('final_response', {}).get('confidence_score', 0.0)
 
-        # Sanitize ALL numpy/pandas types before JSON serialization
+        # Save user query & assistant response to DB
+        user_id = current_user.id if current_user else "guest-user-id"
+        db_user_msg = ChatMessageModel(
+            session_id=chat_req.session_id,
+            user_id=user_id,
+            role="user",
+            content=chat_req.query
+        )
+        db_assistant_msg = ChatMessageModel(
+            session_id=chat_req.session_id,
+            user_id=user_id,
+            role="assistant",
+            content=response.get('final_response', {}).get('text', 'Analysis complete.'),
+            stats_json=json.dumps({"confidence_score": response.get('confidence_score', 0.0)})
+        )
+        db.add(db_user_msg)
+        db.add(db_assistant_msg)
+        db.commit()
+
         return JSONResponse(content=sanitize_for_json(response))
 
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("Chat endpoint failed")
         return JSONResponse(
             status_code=500,
             content=sanitize_for_json({
-                'query': request.query,
+                'query': chat_req.query,
                 'timestamp': datetime.now().isoformat(),
                 'agent_results': {},
                 'final_response': {},
@@ -300,86 +360,54 @@ async def chat(request: ChatRequest):
         )
 
 @app.get("/insights/{session_id}")
-async def get_insights(session_id: str):
+async def get_insights(session_id: str, db: DBSession = Depends(get_db)):
     try:
-        # Validate session
-        validate_session(session_id)
-
-        # Load dataframe
-        df = load_dataframe(session_id)
-
-        # Generate automatic insights and sanitize before serialization
+        df = load_dataframe_from_db(session_id, db)
         insights = coordinator.generate_insights(df)
         return JSONResponse(content=sanitize_for_json(insights))
-
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/sessions/{session_id}")
-async def get_session_info(session_id: str):
-    try:
-        validate_session(session_id)
-        return sessions[session_id]
-    except HTTPException:
-        raise
+async def get_session_info(session_id: str, db: DBSession = Depends(get_db)):
+    db_session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+    if not db_session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {
+        "session_id": db_session.id,
+        "filename": db_session.filename,
+        "uploaded_at": db_session.uploaded_at.isoformat(),
+        "file_info": db_session.file_info
+    }
 
 @app.delete("/sessions/{session_id}")
-async def delete_session(session_id: str):
-    try:
-        validate_session(session_id)
-        
-        # Remove file
-        session_path = get_session_path(session_id)
-        if os.path.exists(session_path):
-            os.remove(session_path)
-        
-        # Remove from memory
-        del sessions[session_id]
-        
-        return {"message": "Session deleted successfully"}
+async def delete_session(session_id: str, db: DBSession = Depends(get_db)):
+    db_session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+    if not db_session:
+        raise HTTPException(status_code=404, detail="Session not found")
     
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    if os.path.exists(db_session.file_path):
+        try:
+            os.remove(db_session.file_path)
+        except Exception:
+            pass
 
-@app.get("/agents/status")
-async def get_agent_status():
-    return coordinator.get_agent_status()
-
-@app.post("/agents/reset")
-async def reset_agents():
-    coordinator.reset_agents()
-    return {"message": "Agents reset successfully"}
+    db.delete(db_session)
+    db.commit()
+    return {"message": "Session deleted successfully"}
 
 @app.get("/data/summary/{session_id}")
-async def get_data_summary(session_id: str):
+async def get_data_summary(session_id: str, db: DBSession = Depends(get_db)):
     try:
-        validate_session(session_id)
-        df = load_dataframe(session_id)
+        df = load_dataframe_from_db(session_id, db)
         summary = file_handler.get_data_summary(df)
         return JSONResponse(content=sanitize_for_json(summary))
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-# Error handlers
-@app.exception_handler(404)
-async def not_found_handler(request, exc):
-    return JSONResponse(
-        status_code=404,
-        content={"error": "Resource not found"}
-    )
-
-@app.exception_handler(500)
-async def internal_error_handler(request, exc):
-    return JSONResponse(
-        status_code=500,
-        content={"error": "Internal server error"}
-    )
 
 if __name__ == "__main__":
     import uvicorn

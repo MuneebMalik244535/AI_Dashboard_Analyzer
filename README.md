@@ -1,48 +1,72 @@
-# 🤖 AI Data Dashboard — Multi-Agent Analytics Platform
+# 🤖 AI Data Dashboard — Enterprise Multi-Agent Analytics Platform
 
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com/)
 [![React](https://img.shields.io/badge/React-18.0+-cyan.svg)](https://react.dev/)
+[![DuckDB](https://img.shields.io/badge/DuckDB-OLAP-yellow.svg)](https://duckdb.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
+[![CI](https://github.com/MuneebMalik244535/AI_Dashboard_Analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/MuneebMalik244535/AI_Dashboard_Analyzer/actions)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 
-An enterprise-grade, multi-agent AI data intelligence dashboard that analyzes CSV datasets, calculates 100% accurate business metrics in pure Python, renders interactive visualizations, and synthesizes executive business narratives.
+An enterprise-grade, multi-agent AI data intelligence dashboard that analyzes tabular datasets, calculates 100% accurate business metrics in pure Python & DuckDB, renders interactive visualizations, and synthesizes executive business narrative briefings.
 
 ---
 
-## 🌟 Key Platform Features
+## 🌟 Platform Capabilities & Architecture Highlights
 
-- 🧠 **4-Agent Collaborative Architecture**:
+- 🧠 **4-Agent Collaborative LLM Architecture**:
   - `PlannerAgent`: Formulates analytical strategy JSON plans via Gemini LLM.
-  - `DataWorkerAgent`: Executes 100% deterministic Python Pandas math (Total Orders, Revenue, Profit, AOV, Top Categories).
+  - `DataWorkerAgent`: Executes 100% deterministic Python Pandas & SciPy math (Total Orders, Revenue, Profit, AOV, IQR/Z-score Outliers).
   - `ChartAgent`: Renders responsive Plotly & Recharts visual configurations.
   - `ExplainerAgent`: Synthesizes executive findings & strategic recommendations.
+- 🦆 **DuckDB In-Memory OLAP Engine & REST SQL Endpoint**:
+  - Sub-second analytical SQL execution over raw datasets via `POST /data/sql`.
+- 🔐 **JWT Token Authentication & User Data Isolation**:
+  - Stateless JWT token auth (`pyjwt` + `passlib`), password hashing, and user profile isolation.
+- 💾 **Persistent Database Layer (SQLAlchemy ORM)**:
+  - Persistent SQLite / PostgreSQL database storage for users, sessions, and multi-turn chat history.
 - ⚡ **Resilient Multi-Provider LLM Fallback**:
-  - Primary API: **Google Gemini API** (`base_url="https://generativelanguage.googleapis.com/v1beta/openai/"`).
-  - Automatic Failover: **Groq API** (`llama-3.3-70b-versatile` / `llama-3.1-8b-instant`) on HTTP 429 rate limit/quota errors.
-- 📊 **Dynamic Dataset Visualizations**:
-  - Real-time Area charts, Category Bar charts, Segment Pie charts, and Correlation Scatter plots derived from uploaded CSV data.
-- 📄 **Multi-Format Report Export Engine**:
-  - One-click downloads for **Executive PDF Summaries**, **Excel/CSV Data Summaries**, **AI Chat Transcripts**, and **Dashboard Snapshots**.
-- 🤝 **Live Agent Activity & Inter-Agent Traffic Inspector**:
-  - Real-time accordion showing step timings, active model engines, computed KPI payloads, and inter-agent communication messages (`PlannerAgent ➔ DataWorkerAgent ➔ ChartAgent ➔ ExplainerAgent`).
+  - Primary API: **Google Gemini API** (`gemini-2.0-flash`).
+  - Automatic Failover: **Groq API** (`llama-3.3-70b-versatile`) on HTTP 429 rate limit/quota errors.
+- 📄 **Executive Multi-Format Exporters**:
+  - One-click downloads for **Executive PDF Summaries (`ReportLab`)**, **Multi-Tab Excel Workbooks (`OpenPyXL`)**, and CSV Data Summaries.
+- 🛡️ **Rate Limiting & APM Telemetry**:
+  - `slowapi` rate limiting on upload and chat endpoints.
+  - Prometheus APM telemetry endpoint (`/metrics`) and structured JSON logging (`structlog`).
+- 🧪 **Automated Pytest Suite & GitHub Actions CI**:
+  - Complete automated test suite covering auth, data cleaning, agents, and REST endpoints.
 
 ---
 
-## 🏛️ Multi-Agent System Architecture
+## 🏛️ Enterprise Architecture Diagram
 
 ```mermaid
 flowchart TD
-    USER[👤 User Uploads CSV & Asks Question] --> FASTAPI[⚡ FastAPI Backend Gateway]
-    FASTAPI --> PLANNER[🧠 PlannerAgent - Strategy & Plan]
-    PLANNER --> WORKER[⚡ DataWorkerAgent - Pure Python Pandas Math]
-    WORKER --> CHART[📊 ChartAgent - Visualization Engine]
-    WORKER --> EXPLAINER[🤖 ExplainerAgent - Executive Synthesis]
-    CHART & EXPLAINER --> FRONTEND[💻 React Glassmorphic UI Dashboard]
+    USER[👤 Enterprise User] -->|Upload CSV & Query| UI[💻 React Glassmorphic UI]
+    UI -->|REST API + Bearer JWT| FASTAPI[⚡ FastAPI Gateway main.py]
+    
+    subgraph Data Pipeline & Security
+        FASTAPI -->|Auth & Rate Limit| AUTH[🔐 JWT Auth & SlowAPI Limiter]
+        FASTAPI -->|DB Session| DB[(💾 SQLAlchemy Database - User & History)]
+        FASTAPI -->|Raw Data| DUCKDB[🦆 DuckDB In-Memory OLAP Engine]
+    end
 
-    %% Failover
-    PLANNER -.->|On HTTP 429| GROQ[🔄 Groq Provider Failover]
-    EXPLAINER -.->|On HTTP 429| GROQ
+    subgraph 4-Agent Orchestration Engine
+        FASTAPI -->|User Query + Schema| PLANNER[🧠 PlannerAgent - Strategy Plan]
+        PLANNER -.->|HTTP 429 Fallback| GROQ[🔄 Groq Failover - Llama-3.3-70b]
+        PLANNER -->|Execution Plan| WORKER[⚡ DataWorkerAgent - Pandas/SciPy Engine]
+        
+        WORKER -->|KPI Payload| CHART[📊 ChartAgent - Plotly Configs]
+        WORKER -->|Statistical Summary| EXPLAINER[🤖 ExplainerAgent - Executive Synthesis]
+        EXPLAINER -.->|HTTP 429 Fallback| GROQ
+    end
+
+    subgraph Export Engine
+        WORKER & EXPLAINER --> PDF[📄 Executive PDF Exporter - ReportLab]
+        WORKER & EXPLAINER --> EXCEL[📊 Multi-Tab Excel Exporter - OpenPyXL]
+    end
+
+    CHART & EXPLAINER & PDF & EXCEL -->|Responses & Files| UI
 ```
 
 ---
@@ -56,8 +80,8 @@ flowchart TD
 
 ### 2. Clone Repository
 ```bash
-git clone https://github.com/YOUR_USERNAME/AI_Data_Dashboard.git
-cd AI_Data_Dashboard
+git clone https://github.com/MuneebMalik244535/AI_Dashboard_Analyzer.git
+cd AI_Dashboard_Analyzer
 ```
 
 ### 3. Environment Setup
@@ -65,7 +89,7 @@ Create a `.env` file inside the `backend/` directory based on `.env.example`:
 ```bash
 cp .env.example backend/.env
 ```
-Fill in your API key inside `backend/.env`:
+Fill in your API keys inside `backend/.env`:
 ```env
 GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
@@ -77,12 +101,17 @@ GROQ_API_KEY=your_groq_api_key_here
 GROQ_BASE_URL=https://api.groq.com/openai/v1
 ```
 
-### 4. Run Backend Server
+### 4. Run Backend Server & Execute Tests
 ```bash
 cd backend
 python -m venv venv
 # On Windows: venv\Scripts\activate  |  On Linux/Mac: source venv/bin/activate
 pip install -r requirements.txt
+
+# Run automated pytest test suite
+pytest tests/ -v
+
+# Start FastAPI server
 python main.py
 ```
 The FastAPI backend will start at `http://localhost:8000`.
@@ -98,54 +127,15 @@ The Vite frontend will open at `http://localhost:5173`.
 
 ---
 
-## 🐳 Running with Docker (1-Command Deployment)
-
-You can run the entire platform (Backend + Frontend) using Docker Compose without installing local Python or Node.js dependencies:
+## 🐳 Running with Docker
 
 ```bash
-# Build and start all containers in background
 docker-compose up -d --build
 ```
 
 - **Frontend Application**: `http://localhost:80`
 - **Backend API Docs**: `http://localhost:8000/docs`
-
-To stop the containers:
-```bash
-docker-compose down
-```
-
----
-
-## 📂 Project Structure
-
-```
-AI_Data_Dashboard/
-├── backend/
-│   ├── agents/
-│   │   ├── planner_agent.py      # LLM Strategy & Execution Planner
-│   │   ├── data_worker_agent.py  # Pure Python Pandas KPI Calculator
-│   │   ├── chart_agent.py        # Plotly & Visualization Engine
-│   │   └── explainer_agent.py    # Executive Synthesis Agent
-│   ├── utils/
-│   │   ├── ai_client.py          # OpenAI SDK Factory with Gemini + Groq Failover
-│   │   ├── agent_coordinator.py  # 4-Agent Pipeline & Traffic Coordinator
-│   │   └── file_handler.py       # 4-Step Automated Data Cleaning Pipeline
-│   ├── main.py                   # FastAPI REST Endpoints
-│   ├── requirements.txt          # Python Dependencies
-│   └── Dockerfile                # Backend Docker Configuration
-├── frontend/
-│   ├── src/
-│   │   ├── App.tsx               # Main Glassmorphic Dashboard UI & Pages
-│   │   ├── api.ts                # API Integration Service
-│   │   └── context/AppContext.tsx# Global State Provider
-│   ├── package.json
-│   └── Dockerfile                # Frontend Nginx Docker Configuration
-├── docker-compose.yml            # Multi-Container Docker Orchestrator
-├── .env.example                  # Environment Variables Template
-├── .gitignore                    # Git Ignore Safeguards
-└── README.md                     # Platform Documentation
-```
+- **Prometheus Metrics**: `http://localhost:8000/metrics`
 
 ---
 

@@ -9,7 +9,7 @@ import {
   ScanLine, Network, Star, Play, Zap, TrendingUp, Activity,
   Filter, Calendar, ArrowUpRight, ArrowDownRight, BarChart2,
   PieChart as PieIcon, GitCommit, List, Trash2, RotateCcw,
-  Wifi, WifiOff, Package, Info
+  Wifi, WifiOff, Package, Info, Tag
 } from 'lucide-react'
 import {
   AreaChart, Area, BarChart, Bar, LineChart as ReLineChart, Line,
@@ -22,6 +22,8 @@ import { AppProvider, useApp } from './context/AppContext'
 import * as api from './api'
 import { AuthModal } from './components/AuthModal'
 import { SQLTerminal } from './components/SQLTerminal'
+import { ArchitecturePage } from './components/ArchitecturePage'
+import { PricingPage } from './components/PricingPage'
 
 // ─── Static / Fallback Data ──────────────────────────────────────────────────
 
@@ -79,6 +81,8 @@ const navItems = [
   { icon: Upload, label: 'Upload Dataset', id: 'upload' },
   { icon: MessageSquare, label: 'AI Chat', id: 'chat' },
   { icon: Database, label: 'SQL Terminal', id: 'sql' },
+  { icon: Network, label: 'Architecture', id: 'architecture' },
+  { icon: Tag, label: 'Pricing', id: 'pricing' },
   { icon: BarChart3, label: 'Analytics', id: 'analytics' },
   { icon: LineChart, label: 'Visualizations', id: 'viz' },
   { icon: FileText, label: 'Reports', id: 'reports' },
@@ -1864,6 +1868,8 @@ function AppInner() {
       case 'upload':       return <UploadPage onNav={setActiveNav} />
       case 'chat':         return <ChatPage onNav={setActiveNav} />
       case 'sql':          return <SQLTerminalPage />
+      case 'architecture': return <ArchitecturePage />
+      case 'pricing':      return <PricingPage onOpenAuth={() => setIsAuthOpen(true)} />
       case 'analytics':    return <AnalyticsPage onNav={setActiveNav} />
       case 'viz':          return <VisualizationsPage onNav={setActiveNav} />
       case 'reports':      return <ReportsPage onNav={setActiveNav} />

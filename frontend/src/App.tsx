@@ -20,6 +20,8 @@ import {
 
 import { AppProvider, useApp } from './context/AppContext'
 import * as api from './api'
+import { AuthModal } from './components/AuthModal'
+import { SQLTerminal } from './components/SQLTerminal'
 
 // ─── Static / Fallback Data ──────────────────────────────────────────────────
 
@@ -76,6 +78,7 @@ const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', id: 'dashboard' },
   { icon: Upload, label: 'Upload Dataset', id: 'upload' },
   { icon: MessageSquare, label: 'AI Chat', id: 'chat' },
+  { icon: Database, label: 'SQL Terminal', id: 'sql' },
   { icon: BarChart3, label: 'Analytics', id: 'analytics' },
   { icon: LineChart, label: 'Visualizations', id: 'viz' },
   { icon: FileText, label: 'Reports', id: 'reports' },
@@ -1190,67 +1193,18 @@ function ReportsPage({ onNav }: { onNav: (id: string) => void }) {
     setTimeout(() => setToastMessage(null), 3500)
   }
 
-  // 1. Download Executive PDF / Text Report
+  // 1. Download Executive PDF Report
   const handleDownloadPDF = () => {
     if (!uploadedFile) return
-    const reportText = [
-      buildReportHeader('EXECUTIVE SUMMARY REPORT', uploadedFile),
-      '1. EXECUTIVE NARRATIVE',
-      '-------------------------------------------------------------------',
-      narrative,
-      '',
-      '2. COMPUTED BUSINESS KPIS',
-      '-------------------------------------------------------------------',
-      `• Total Orders: ${kpis.total_orders ?? uploadedFile.info.shape[0]}`,
-      `• Total Revenue: £${kpis.total_revenue ? kpis.total_revenue.toLocaleString() : 'N/A'}`,
-      `• Total Profit: £${kpis.total_profit ? kpis.total_profit.toLocaleString() : 'N/A'}`,
-      `• Average Order Value (AOV): £${kpis.average_order_value ?? 'N/A'}`,
-      '',
-      '3. KEY FINDINGS FROM AI ANALYSIS',
-      '-------------------------------------------------------------------',
-      ...keyFindings.map((f, i) => `${i + 1}. ${f}`),
-      '',
-      '4. STRATEGIC RECOMMENDATIONS',
-      '-------------------------------------------------------------------',
-      ...recommendations.map((r, i) => `• ${r}`),
-      '',
-      '5. DATASET METADATA',
-      '-------------------------------------------------------------------',
-      `Filename: ${uploadedFile.filename}`,
-      `Total Rows: ${uploadedFile.info.shape[0]}`,
-      `Total Columns: ${uploadedFile.info.shape[1]}`,
-      `Columns: ${uploadedFile.info.columns.join(', ')}`,
-    ].join('\n')
-
-    downloadFile(`Executive_Summary_${uploadedFile.filename}.txt`, reportText)
-    showToast('Executive Summary Report downloaded successfully!')
+    window.open(`/api/reports/pdf/${encodeURIComponent(uploadedFile.sessionId)}`, '_blank')
+    showToast('Executive PDF Report generated & downloading...')
   }
 
-  // 2. Download Excel / CSV Data Summary
+  // 2. Download Multi-Tab Excel Workbook
   const handleDownloadExcel = () => {
     if (!uploadedFile) return
-    const csvRows = [
-      ['Metric / Property', 'Value'],
-      ['Filename', uploadedFile.filename],
-      ['Total Rows', uploadedFile.info.shape[0]],
-      ['Total Columns', uploadedFile.info.shape[1]],
-      ['Total Orders', kpis.total_orders ?? uploadedFile.info.shape[0]],
-      ['Total Revenue (£)', kpis.total_revenue ?? 'N/A'],
-      ['Total Profit (£)', kpis.total_profit ?? 'N/A'],
-      ['Average Order Value (£)', kpis.average_order_value ?? 'N/A'],
-      [],
-      ['AI Key Findings'],
-      ...keyFindings.map(f => [f]),
-      [],
-      ['Strategic Recommendations'],
-      ...recommendations.map(r => [r]),
-      [],
-      ['Dataset Columns', ...uploadedFile.info.columns]
-    ]
-
-    const csvContent = csvRows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n')
-    downloadFile(`Analysis_Data_${uploadedFile.filename}.csv`, csvContent, 'text/csv')
-    showToast('Excel/CSV Data Summary downloaded successfully!')
+    window.open(`/api/reports/excel/${encodeURIComponent(uploadedFile.sessionId)}`, '_blank')
+    showToast('Multi-Tab Excel Workbook generated & downloading...')
   }
 
   // 3. Share Dashboard
@@ -1627,7 +1581,19 @@ function SettingsPage() {
 // ─── LAYOUT: NAVBAR ──────────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function Navbar({ darkMode, onToggleDark }: { darkMode: boolean; onToggleDark: () => void }) {
+function Navbar({
+  darkMode,
+  onToggleDark,
+  currentUser,
+  onOpenAuth,
+  onLogout
+}: {
+  darkMode: boolean
+  onToggleDark: () => void
+  currentUser: api.UserProfile | null
+  onOpenAuth: () => void
+  onLogout: () => void
+}) {
   const { uploadedFile } = useApp()
   return (
     <header className="fixed top-0 left-0 right-0 z-50 flex items-center gap-4 px-6"
@@ -1669,14 +1635,40 @@ function Navbar({ darkMode, onToggleDark }: { darkMode: boolean; onToggleDark: (
           style={{ width: 36, height: 36, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
           {darkMode ? <Sun size={15} color="#71717A" /> : <Moon size={15} color="#71717A" />}
         </button>
-        <div className="flex items-center gap-2.5 rounded-xl px-3 cursor-pointer hover-lift"
-          style={{ height: 36, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-          <div className="flex items-center justify-center rounded-lg" style={{ width: 24, height: 24, background: 'linear-gradient(135deg,#6366F1,#06B6D4)', fontSize: 11, fontWeight: 700, color: '#fff' }}>AK</div>
-          <span style={{ fontSize: 13, fontWeight: 500 }}>Aria Khan</span>
-          <ChevronDown size={12} color="#52525B" />
-        </div>
+
+        {currentUser ? (
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 rounded-xl px-3" style={{ height: 36, background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.25)' }}>
+              <div className="flex items-center justify-center rounded-lg" style={{ width: 22, height: 22, background: 'linear-gradient(135deg,#6366F1,#06B6D4)', fontSize: 10, fontWeight: 700, color: '#fff' }}>
+                {currentUser.email.slice(0, 2).toUpperCase()}
+              </div>
+              <span style={{ fontSize: 12, fontWeight: 600, color: '#A5B4FC' }}>{currentUser.full_name || currentUser.email.split('@')[0]}</span>
+            </div>
+            <button onClick={onLogout} className="px-2.5 py-1.5 text-xs text-red-400 hover:text-red-300 rounded-lg hover:bg-red-500/10 transition-all cursor-pointer">
+              Logout
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={onOpenAuth}
+            className="flex items-center gap-2 rounded-xl px-4 py-2 hover-lift"
+            style={{ background: 'linear-gradient(135deg, #6366F1, #4F46E5)', color: '#fff', fontWeight: 600, fontSize: 12, border: 'none', cursor: 'pointer' }}
+          >
+            <User size={13} /> Sign In
+          </button>
+        )}
       </div>
     </header>
+  )
+}
+
+function SQLTerminalPage() {
+  const { uploadedFile } = useApp()
+  return (
+    <div>
+      <PageHeader title="SQL Terminal" subtitle="Execute in-memory DuckDB analytical queries over your dataset" />
+      <SQLTerminal sessionId={uploadedFile?.sessionId ?? null} />
+    </div>
   )
 }
 
@@ -1739,10 +1731,7 @@ function RightPanel() {
   const timeline = uploadedFile
     ? [
         { label: 'Dataset loaded', time: 'Session', color: '#22C55E' },
-        ...(lastChatResponse ? [
-          { label: 'Query processed', time: new Date(lastChatResponse.timestamp).toLocaleTimeString(), color: '#6366F1' },
-          { label: 'Agents completed', time: '–', color: '#06B6D4' },
-        ] : [{ label: 'Waiting for query', time: '–', color: '#52525B' }]),
+        ...(lastChatResponse ? [{ label: 'AI Query complete', time: 'Done', color: '#6366F1' }] : [])
       ]
     : [{ label: 'No session active', time: '–', color: '#52525B' }]
 
@@ -1816,6 +1805,19 @@ function RightPanel() {
 function AppInner() {
   const [activeNav, setActiveNav] = useState('dashboard')
   const [darkMode, setDarkMode] = useState(true)
+  const [currentUser, setCurrentUser] = useState<api.UserProfile | null>(null)
+  const [isAuthOpen, setIsAuthOpen] = useState(false)
+
+  useEffect(() => {
+    api.getMe().then(user => {
+      if (user) setCurrentUser(user)
+    })
+  }, [])
+
+  const handleLogout = () => {
+    api.removeAuthToken()
+    setCurrentUser(null)
+  }
 
   // Page router
   const renderPage = () => {
@@ -1823,6 +1825,7 @@ function AppInner() {
       case 'dashboard':    return <DashboardPage onNav={setActiveNav} />
       case 'upload':       return <UploadPage onNav={setActiveNav} />
       case 'chat':         return <ChatPage onNav={setActiveNav} />
+      case 'sql':          return <SQLTerminalPage />
       case 'analytics':    return <AnalyticsPage onNav={setActiveNav} />
       case 'viz':          return <VisualizationsPage onNav={setActiveNav} />
       case 'reports':      return <ReportsPage onNav={setActiveNav} />
@@ -1835,7 +1838,13 @@ function AppInner() {
 
   return (
     <div style={{ background: '#09090B', minHeight: '100vh', color: '#FAFAFA' }}>
-      <Navbar darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
+      <Navbar
+        darkMode={darkMode}
+        onToggleDark={() => setDarkMode(d => !d)}
+        currentUser={currentUser}
+        onOpenAuth={() => setIsAuthOpen(true)}
+        onLogout={handleLogout}
+      />
       <Sidebar active={activeNav} onNav={setActiveNav} />
 
       {/* Main scrollable content */}
@@ -1846,6 +1855,12 @@ function AppInner() {
       </main>
 
       <RightPanel />
+
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+        onSuccess={user => setCurrentUser(user)}
+      />
     </div>
   )
 }

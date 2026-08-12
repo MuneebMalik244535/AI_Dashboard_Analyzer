@@ -22,6 +22,7 @@ QUERY_PATTERNS = {
     'summary':      ['summary', 'overview', 'describe', 'statistics', 'stats', 'total revenue', 'total profit', 'total orders', 'aov', 'average order value'],
     'outlier':      ['outlier', 'anomaly', 'unusual', 'strange', 'abnormal'],
     'chart':        ['chart', 'graph', 'plot', 'visualize', 'show me', 'display'],
+    'accounting':   ['balance sheet', 'p&l', 'income statement', 'cash flow', 'accounting', 'accountant', 'financial statement', 'current ratio', 'working capital', 'tax', 'ebitda', 'solvency', 'liquidity', 'debit', 'credit'],
 }
 
 
@@ -35,10 +36,11 @@ def _keyword_columns(query: str, columns: List[str]) -> List[str]:
     q = query.lower()
     mentioned = [c for c in columns if c.lower() in q]
     type_map = {
-        'date':     ['date', 'time', 'created', 'updated', 'timestamp', 'month'],
-        'price':    ['price', 'cost', 'amount', 'revenue', 'sales', 'profit'],
-        'quantity': ['quantity', 'count', 'number', 'total', 'orders', 'units'],
-        'category': ['category', 'type', 'group', 'classification', 'store', 'product'],
+        'date':       ['date', 'time', 'created', 'updated', 'timestamp', 'month'],
+        'price':      ['price', 'cost', 'amount', 'revenue', 'sales', 'profit'],
+        'quantity':   ['quantity', 'count', 'number', 'total', 'orders', 'units'],
+        'category':   ['category', 'type', 'group', 'classification', 'store', 'product'],
+        'accounting': ['asset', 'liability', 'equity', 'payable', 'receivable', 'cash', 'inventory', 'debt', 'cogs', 'tax'],
     }
     for _, kws in type_map.items():
         if any(k in q for k in kws):
@@ -52,6 +54,7 @@ def _build_execution_plan(query_type: List[str], columns: List[str], df: pd.Data
     numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
     target = columns or numeric_cols[:5]
 
+    if 'accounting'   in query_type: ops.extend(['generate_balance_sheet', 'generate_income_statement', 'calculate_financial_ratios'])
     if 'trend'        in query_type: ops.extend(['group_by_time', 'calculate_trend']);       fmt = 'chart'
     if 'comparison'   in query_type: ops.extend(['group_by_category', 'calculate_comparison'])
     if 'correlation'  in query_type: ops.extend(['calculate_correlation'])
@@ -64,6 +67,7 @@ def _build_execution_plan(query_type: List[str], columns: List[str], df: pd.Data
         'analysis_type':   query_type,
         'target_columns':  target,
         'output_format':   fmt,
+        'is_accounting_query': 'accounting' in query_type or any(o in ops for o in ['generate_balance_sheet', 'generate_income_statement']),
     }
 
 
@@ -78,41 +82,42 @@ def _fallback_plan(query: str, df: pd.DataFrame) -> Dict[str, Any]:
         'requires_chart':    'chart' in query_type or any(
             w in query.lower() for w in ['show', 'visualize', 'plot', 'graph', 'trend']
         ),
-        'reasoning':         'Fallback keyword-matching strategy generated analysis steps.',
+        'is_accounting_query': 'accounting' in query_type,
+        'reasoning':         'Fallback keyword-matching strategy generated accounting/analysis steps.',
         'powered_by':        'keyword_fallback',
     }
 
 
 PLANNER_SYSTEM_PROMPT = """\
-You are an expert AI Data Planner for an AI Analytics Dashboard.
+You are an expert AI Data & Accounting Planner for an AI Analytics Dashboard.
 Analyze the user's business query and dataset schema, then output a structured JSON plan for downstream agents:
-  1. DataWorkerAgent (executes Python data operations & calculates KPIs)
-  2. ChartAgent (renders Plotly charts)
-  3. ExplainerAgent (synthesizes human-readable business response)
+  1. AccountantAgent (executes zero-token accounting, balance sheet, P&L, and ratio calculations)
+  2. DataWorkerAgent (executes Python data operations & calculates business KPIs)
+  3. ChartAgent (renders Plotly charts)
+  4. ExplainerAgent (synthesizes human-readable business response & executive CFO summary)
 
-Available data operations:
-  - calculate_business_kpis   : calculate total orders, total revenue, total profit, AOV, top categories, monthly sales trend, customer metrics
+Available data & accounting operations:
+  - generate_balance_sheet     : generate double-entry classified Balance Sheet (Assets = Liabilities + Equity)
+  - generate_income_statement   : compute P&L statement (Revenue, COGS, EBITDA, EBIT, Net Income)
+  - calculate_financial_ratios  : compute solvency, liquidity, profitability, ROA, ROE, Debt-to-Equity
+  - calculate_business_kpis   : calculate total orders, total revenue, total profit, AOV, top categories
   - calculate_summary_stats   : descriptive stats (mean, std, min, max, median, nulls)
-  - calculate_trend           : linear regression & time series trend over time
+  - calculate_trend           : time series trend over time
   - calculate_comparison      : group-by aggregation across categorical dimensions
-  - calculate_correlation     : correlation matrix across numeric columns
-  - calculate_distribution    : histogram bins, skewness, percentiles
-  - detect_outliers           : IQR + Z-score anomaly detection
-  - group_by_time             : group & aggregate numeric columns by year/month/quarter
-  - group_by_category         : group & aggregate numeric columns by category/store
 
 Your output MUST be valid JSON only (no markdown code blocks), matching this exact schema:
 {
-  "query_type": ["summary", "trend", "comparison", "correlation", "distribution", "outlier", "chart"],
+  "query_type": ["accounting", "summary", "trend", "comparison", "chart"],
   "mentioned_columns": ["col1", "col2"],
   "execution_plan": {
-    "data_operations": ["calculate_business_kpis", "calculate_summary_stats", "group_by_category"],
-    "analysis_type": ["summary", "comparison"],
-    "target_columns": ["revenue", "units_sold", "product_category"],
-    "output_format": "text or chart"
+    "data_operations": ["generate_balance_sheet", "generate_income_statement", "calculate_financial_ratios"],
+    "analysis_type": ["accounting", "summary"],
+    "target_columns": ["revenue", "cogs", "expenses"],
+    "output_format": "text or chart",
+    "is_accounting_query": true
   },
-  "requires_chart": true,
-  "reasoning": "Clear 1-2 sentence strategy explaining how the agents will analyze this query."
+  "requires_chart": false,
+  "reasoning": "Clear 1-2 sentence strategy explaining how downstream agents will handle this query."
 }
 """
 

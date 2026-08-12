@@ -539,6 +539,41 @@ async def upload_sample_dataset(db: DBSession = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/accounting/balance-sheet/{session_id}")
+async def get_balance_sheet(session_id: str, db: DBSession = Depends(get_db)):
+    try:
+        df = load_dataframe_from_db(session_id, db)
+        return coordinator.accountant.generate_balance_sheet(df)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/accounting/income-statement/{session_id}")
+async def get_income_statement(session_id: str, db: DBSession = Depends(get_db)):
+    try:
+        df = load_dataframe_from_db(session_id, db)
+        return coordinator.accountant.generate_income_statement(df)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/accounting/ratios/{session_id}")
+async def get_financial_ratios(session_id: str, db: DBSession = Depends(get_db)):
+    try:
+        df = load_dataframe_from_db(session_id, db)
+        return coordinator.accountant.calculate_ratios(df)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/accounting/mcp-tools")
+async def get_accounting_mcp_tools():
+    """Returns MCP (Model Context Protocol) tool definitions for external integration."""
+    return {"tools": coordinator.accountant.get_mcp_tool_definitions()}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

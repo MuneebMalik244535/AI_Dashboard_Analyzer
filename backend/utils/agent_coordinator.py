@@ -15,6 +15,7 @@ import pandas as pd
 
 from agents.planner_agent     import PlannerAgent
 from agents.data_worker_agent import DataWorkerAgent
+from agents.accountant_agent  import AccountantAgent
 from agents.chart_agent       import ChartAgent
 from agents.explainer_agent   import ExplainerAgent
 
@@ -22,17 +23,18 @@ logger = logging.getLogger(__name__)
 
 
 class AgentCoordinator:
-    """Coordinates agents and manages inter-agent workflow execution."""
+    """Coordinates multi-agent collaboration (Planner, DataWorker, Accountant, Chart, Explainer)."""
 
     def __init__(self):
         self.planner     = PlannerAgent()
         self.data_worker = DataWorkerAgent()
+        self.accountant  = AccountantAgent()
         self.chart_agent = ChartAgent()
         self.explainer   = ExplainerAgent()
         self.execution_history: List[Dict[str, Any]] = []
 
     def process_query(self, user_query: str, df: pd.DataFrame, chat_history: List[Dict[str, str]] = None) -> Dict[str, Any]:
-        """Run the 4-agent collaborative pipeline for a user query."""
+        """Run the multi-agent collaborative pipeline for a user query."""
         results: Dict[str, Any] = {
             'query':             user_query,
             'timestamp':         pd.Timestamp.now().isoformat(),
@@ -61,7 +63,7 @@ class AgentCoordinator:
             })
             results['agent_messages'].append({
                 'from': 'PlannerAgent',
-                'to': 'DataWorkerAgent',
+                'to': 'DataWorkerAgent & AccountantAgent',
                 'content': f"Execution Plan formulated. Operations: {plan_result.get('execution_plan', {}).get('data_operations', [])}. Target columns: {plan_result.get('execution_plan', {}).get('target_columns', [])}."
             })
             logger.info("PlannerAgent completed in %.3fs via %s", elapsed_planner, plan_result.get('powered_by'))
@@ -88,6 +90,29 @@ class AgentCoordinator:
                 'content': f"Calculated business metrics: Total Orders={kpis.get('total_orders')}, Total Revenue=£{kpis.get('total_revenue')}, AOV=£{kpis.get('average_order_value')}. Passed numerical payload."
             })
             logger.info("DataWorkerAgent completed in %.3fs", elapsed_worker)
+
+            # ── Step 3: AccountantAgent (Zero-Token Financial Engine) ─────────
+            t0                = time.perf_counter()
+            accounting_result = self.accountant.process_accounting_plan(
+                plan_result.get('execution_plan', plan_result), df
+            )
+            elapsed_accountant = round(time.perf_counter() - t0, 3)
+
+            results['agent_results']['accountant'] = accounting_result
+            acc_summary = accounting_result.get('summary_kpis', {})
+            results['agent_logs'].append({
+                'agent':      'AccountantAgent',
+                'status':     'completed',
+                'elapsed_s':  elapsed_accountant,
+                'powered_by': 'deterministic_accounting_engine',
+                'detail':     f"Generated double-entry Balance Sheet & P&L. Assets: £{acc_summary.get('total_assets')}, Liabilities: £{acc_summary.get('total_liabilities')}, Net Income: £{acc_summary.get('net_income')}. Balanced: {acc_summary.get('is_balanced')}.",
+            })
+            results['agent_messages'].append({
+                'from': 'AccountantAgent',
+                'to': 'ExplainerAgent & UI',
+                'content': f"Financial statements generated deterministically with 0 LLM tokens. Balance Sheet is_balanced={acc_summary.get('is_balanced')}, Current Ratio={acc_summary.get('current_ratio')}."
+            })
+            logger.info("AccountantAgent completed in %.3fs", elapsed_accountant)
 
             # ── Step 3: ChartAgent ───────────────────────────────────────────
             t0           = time.perf_counter()

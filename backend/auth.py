@@ -82,3 +82,15 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     return user
+
+def require_role(allowed_roles: list[str]):
+    """RBAC dependency factory that validates current user role permissions."""
+    def role_checker(user: User = Depends(get_current_user)) -> User:
+        user_role = getattr(user, "role", "cfo")
+        if user_role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Role '{user_role}' lacks permission for this action. Required: {allowed_roles}"
+            )
+        return user
+    return role_checker

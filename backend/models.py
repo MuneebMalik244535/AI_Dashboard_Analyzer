@@ -12,6 +12,8 @@ class User(Base):
     email = Column(String(255), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(255), nullable=True)
+    role = Column(String(50), default="cfo", nullable=False)  # 'admin', 'cfo', 'analyst', 'viewer'
+    organization_id = Column(String(36), default="org-default", nullable=False)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 

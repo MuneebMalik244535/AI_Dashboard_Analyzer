@@ -1,6 +1,6 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 import os
@@ -8,6 +8,7 @@ import pandas as pd
 import numpy as np
 import uuid
 import io
+import asyncio
 from datetime import datetime
 import json
 import logging
@@ -49,7 +50,7 @@ from models import User, SessionModel, ChatMessageModel
 from auth import (
     UserCreate, UserLogin, UserResponse, Token,
     verify_password, get_password_hash, create_access_token,
-    get_current_user, get_current_user_optional
+    get_current_user, get_current_user_optional, require_role
 )
 from agents.planner_agent import PlannerAgent
 from agents.data_worker_agent import DataWorkerAgent
@@ -57,6 +58,7 @@ from agents.chart_agent import ChartAgent
 from agents.explainer_agent import ExplainerAgent
 from utils.file_handler import FileHandler
 from utils.agent_coordinator import AgentCoordinator
+from utils.storage_manager import StorageManager
 
 # Rate Limiter setup
 limiter = Limiter(key_func=get_remote_address)
@@ -108,6 +110,7 @@ file_handler = FileHandler()
 duckdb_engine = DuckDBEngine()
 pdf_generator = PDFReportGenerator()
 excel_exporter = ExcelWorkbookExporter()
+storage_manager = StorageManager()
 
 # Pydantic models
 class ChatRequest(BaseModel):
@@ -161,8 +164,8 @@ def create_db_session(
     user: Optional[User] = None
 ) -> SessionModel:
     session_id = str(uuid.uuid4())
-    session_path = get_session_path(session_id)
-    df.to_csv(session_path, index=False)
+    csv_bytes = df.to_csv(index=False).encode('utf-8')
+    session_path = storage_manager.save_file(csv_bytes, f"{session_id}.csv")
 
     if not user:
         user = get_or_create_guest_user(db)
@@ -190,11 +193,14 @@ def create_db_session(
     return db_session
 
 def load_dataframe_from_db(session_id: str, db: DBSession) -> pd.DataFrame:
-    db_session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
-    if not db_session or not os.path.exists(db_session.file_path):
-        raise HTTPException(status_code=404, detail="Session or file not found")
+    local_path = storage_manager.get_local_path(f"{session_id}.csv")
+    if not os.path.exists(local_path):
+        db_session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+        if not db_session or not os.path.exists(db_session.file_path):
+            raise HTTPException(status_code=404, detail="Session or file not found")
+        local_path = db_session.file_path
 
-    df = pd.read_csv(db_session.file_path)
+    df = pd.read_csv(local_path)
     df = file_handler.clean_dataframe(df)
     return df
 
@@ -362,14 +368,42 @@ async def chat(
             status_code=500,
             content=sanitize_for_json({
                 'query': chat_req.query,
-                'timestamp': datetime.now().isoformat(),
+                'timestamp': datetime.utcnow().isoformat(),
                 'agent_results': {},
-                'final_response': {},
+                'final_response': {'text': f'An error occurred: {str(e)}'},
                 'followup_questions': [],
                 'confidence_score': 0.0,
                 'error': str(e)
             })
         )
+
+@app.post("/chat/stream")
+@limiter.limit("20/minute")
+async def chat_stream(
+    request: Request,
+    chat_req: ChatRequest,
+    db: DBSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional)
+):
+    """Server-Sent Events (SSE) stream endpoint for live real-time agent execution tracking."""
+    try:
+        df = load_dataframe_from_db(chat_req.session_id, db)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Session data unavailable: {e}")
+
+    async def event_generator():
+        yield f"data: {json.dumps({'event': 'agent_start', 'agent': 'PlannerAgent', 'timestamp': datetime.utcnow().isoformat()})}\n\n"
+        await asyncio.sleep(0.02)
+
+        results = coordinator.process_query(chat_req.query, df)
+
+        for log in results.get('agent_logs', []):
+            yield f"data: {json.dumps({'event': 'agent_progress', 'log': log})}\n\n"
+            await asyncio.sleep(0.02)
+
+        yield f"data: {json.dumps({'event': 'final_response', 'payload': sanitize_for_json(results)})}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 @app.get("/insights/{session_id}")
 async def get_insights(session_id: str, db: DBSession = Depends(get_db)):

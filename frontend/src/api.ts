@@ -50,6 +50,7 @@ export interface UploadResponse {
   filename: string
   session_id: string
   info: FileInfo
+  initial_insights?: ChatResponse
   error?: string
 }
 
@@ -274,3 +275,50 @@ export async function checkHealth(): Promise<{ status: string }> {
   if (!res.ok) throw new Error('Backend not reachable')
   return res.json()
 }
+
+// ─── Accounting API Functions ────────────────────────────────────────────────
+
+export async function getBalanceSheet(sessionId: string): Promise<Record<string, any>> {
+  const res = await fetch(`${BASE}/accounting/balance-sheet/${encodeURIComponent(sessionId)}`, {
+    headers: getAuthHeaders(),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as any)?.detail ?? `Balance Sheet request failed (${res.status})`)
+  }
+  return res.json()
+}
+
+export async function getIncomeStatement(sessionId: string): Promise<Record<string, any>> {
+  const res = await fetch(`${BASE}/accounting/income-statement/${encodeURIComponent(sessionId)}`, {
+    headers: getAuthHeaders(),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as any)?.detail ?? `Income Statement request failed (${res.status})`)
+  }
+  return res.json()
+}
+
+export async function getFinancialRatios(sessionId: string): Promise<Record<string, any>> {
+  const res = await fetch(`${BASE}/accounting/ratios/${encodeURIComponent(sessionId)}`, {
+    headers: getAuthHeaders(),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as any)?.detail ?? `Financial Ratios request failed (${res.status})`)
+  }
+  return res.json()
+}
+
+export async function getAccountingMcpTools(): Promise<{ tools: Record<string, any>[] }> {
+  const res = await fetch(`${BASE}/accounting/mcp-tools`, {
+    headers: getAuthHeaders(),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as any)?.detail ?? `MCP Tools request failed (${res.status})`)
+  }
+  return res.json()
+}
+

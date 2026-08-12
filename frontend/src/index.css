@@ -21,6 +21,58 @@
   box-sizing: border-box;
 }
 
+/* ── Light Creamy Theme Support ─────────────────────────────────────────── */
+body.theme-creamy,
+#root.theme-creamy {
+  background: #FAF7F2;
+  color: #1C1917;
+}
+
+body.theme-creamy ::-webkit-scrollbar-thumb {
+  background: #D6CEC0;
+}
+body.theme-creamy ::-webkit-scrollbar-thumb:hover {
+  background: #B8AC98;
+}
+
+/* Creamy Light Cards & Utilities */
+.creamy-bg {
+  background-color: #FAF7F2 !important;
+  color: #1C1917 !important;
+}
+
+.creamy-card {
+  background: rgba(255, 253, 248, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(214, 206, 192, 0.6);
+  box-shadow: 0 10px 30px -10px rgba(60, 50, 35, 0.06);
+  border-radius: 20px;
+  color: #1C1917;
+}
+
+.creamy-card-sm {
+  background: rgba(255, 253, 248, 0.95);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(214, 206, 192, 0.6);
+  box-shadow: 0 4px 16px rgba(60, 50, 35, 0.04);
+  border-radius: 14px;
+  color: #1C1917;
+}
+
+.creamy-pill {
+  background: rgba(243, 239, 230, 0.9);
+  border: 1px solid rgba(214, 206, 192, 0.7);
+  color: #44403C;
+}
+
+.gradient-text-gold {
+  background: linear-gradient(135deg, #B45309 0%, #D97706 50%, #059669 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
 html, body, #root {
   height: 100%;
   margin: 0;

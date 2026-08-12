@@ -25,6 +25,8 @@ import { SQLTerminal } from './components/SQLTerminal'
 import { ArchitecturePage } from './components/ArchitecturePage'
 import { PricingPage } from './components/PricingPage'
 import { LandingPage } from './components/LandingPage'
+import { CFOAccountingHub } from './components/CFOAccountingHub'
+import { Scale, Calculator } from 'lucide-react'
 
 // ─── Static / Fallback Data ──────────────────────────────────────────────────
 
@@ -80,6 +82,7 @@ const DEFAULT_PROMPTS = [
 const navItems = [
   { icon: Home, label: 'Home Page', id: 'home' },
   { icon: LayoutDashboard, label: 'Dashboard', id: 'dashboard' },
+  { icon: Scale, label: 'CFO Accounting Hub', id: 'accounting' },
   { icon: Upload, label: 'Upload Dataset', id: 'upload' },
   { icon: MessageSquare, label: 'AI Chat', id: 'chat' },
   { icon: Database, label: 'SQL Terminal', id: 'sql' },
@@ -1848,7 +1851,8 @@ function RightPanel() {
 
 function AppInner() {
   const [activeNav, setActiveNav] = useState('home')
-  const [darkMode, setDarkMode] = useState(true)
+  const [themeMode, setThemeMode] = useState<'creamy' | 'dark'>('creamy')
+  const [darkMode, setDarkMode] = useState(false)
   const [currentUser, setCurrentUser] = useState<api.UserProfile | null>(null)
   const [isAuthOpen, setIsAuthOpen] = useState(false)
 
@@ -1876,6 +1880,7 @@ function AppInner() {
           />
         )
       case 'dashboard':    return <DashboardPage onNav={setActiveNav} />
+      case 'accounting':   return <CFOAccountingHub themeMode={themeMode} />
       case 'upload':       return <UploadPage onNav={setActiveNav} />
       case 'chat':         return <ChatPage onNav={setActiveNav} />
       case 'sql':          return <SQLTerminalPage />
@@ -1905,10 +1910,13 @@ function AppInner() {
   }
 
   return (
-    <div style={{ background: '#09090B', minHeight: '100vh', color: '#FAFAFA' }}>
+    <div style={{ background: themeMode === 'creamy' ? '#FAF7F2' : '#09090B', minHeight: '100vh', color: themeMode === 'creamy' ? '#1C1917' : '#FAFAFA' }}>
       <Navbar
         darkMode={darkMode}
-        onToggleDark={() => setDarkMode(d => !d)}
+        onToggleDark={() => {
+          setDarkMode(d => !d)
+          setThemeMode(t => t === 'creamy' ? 'dark' : 'creamy')
+        }}
         currentUser={currentUser}
         onOpenAuth={() => setIsAuthOpen(true)}
         onLogout={handleLogout}

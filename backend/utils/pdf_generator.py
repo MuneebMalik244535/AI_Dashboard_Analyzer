@@ -21,7 +21,10 @@ class PDFReportGenerator:
         filename: str,
         kpis: Dict[str, Any],
         narrative: str = "",
-        key_findings: List[str] = None
+        key_findings: List[str] = None,
+        balance_sheet: Dict[str, Any] = None,
+        income_statement: Dict[str, Any] = None,
+        ratios: Dict[str, Any] = None,
     ) -> bytes:
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(
@@ -41,7 +44,7 @@ class PDFReportGenerator:
             fontSize=20,
             leading=24,
             textColor=colors.HexColor("#4F46E5"),
-            spaceAfter=10
+            spaceAfter=6
         )
         subtitle_style = ParagraphStyle(
             'ReportSubtitle',
@@ -56,8 +59,8 @@ class PDFReportGenerator:
             'SectionHeader',
             parent=styles['Heading2'],
             fontName='Helvetica-Bold',
-            fontSize=14,
-            leading=18,
+            fontSize=13,
+            leading=16,
             textColor=colors.HexColor("#1F2937"),
             spaceBefore=12,
             spaceAfter=8
@@ -75,12 +78,12 @@ class PDFReportGenerator:
         story = []
 
         # Header Title
-        story.append(Paragraph("AI Data Dashboard — Executive Analysis Report", title_style))
+        story.append(Paragraph("AI Data & CFO Accounting Dashboard — Executive Audit Report", title_style))
         story.append(Paragraph(f"Dataset: <b>{filename}</b> | Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M')}", subtitle_style))
-        story.append(Spacer(1, 10))
+        story.append(Spacer(1, 8))
 
         # KPI Summary Table
-        story.append(Paragraph("Key Business Performance Metrics", heading2_style))
+        story.append(Paragraph("Key Performance Metrics", heading2_style))
         table_data = [
             ["Metric Name", "Calculated Value"],
             ["Total Orders", f"{kpis.get('total_orders', 0):,}"],
@@ -94,27 +97,48 @@ class PDFReportGenerator:
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#4F46E5")),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 11),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
-            ('TOPPADDING', (0, 0), (-1, 0), 8),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+            ('TOPPADDING', (0, 0), (-1, 0), 6),
             ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor("#F9FAFB")),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#E5E7EB")),
-            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 1), (-1, -1), 10),
-            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
         ]))
         story.append(t)
-        story.append(Spacer(1, 15))
+        story.append(Spacer(1, 12))
 
-        # Executive Narrative Section
+        # Financial Statements (Balance Sheet & P&L) if available
+        if balance_sheet and income_statement:
+            story.append(Paragraph("Double-Entry Balance Sheet Summary", heading2_style))
+            bs_assets = balance_sheet.get('assets', {}).get('total_assets', 0.0)
+            bs_liab = balance_sheet.get('liabilities', {}).get('total_liabilities', 0.0)
+            bs_eq = balance_sheet.get('equity', {}).get('total_equity', 0.0)
+            is_balanced = balance_sheet.get('summary', {}).get('is_balanced', True)
+
+            bs_table_data = [
+                ["Balance Sheet Category", "Amount (£)", "Ledger Integrity"],
+                ["Total Assets", f"£{bs_assets:,.2f}", "Balanced" if is_balanced else "Unbalanced"],
+                ["Total Liabilities", f"£{bs_liab:,.2f}", "Verified"],
+                ["Shareholders' Equity", f"£{bs_eq:,.2f}", "Verified"],
+                ["Total Liabilities & Equity", f"£{(bs_liab + bs_eq):,.2f}", "Assets = L + E"],
+            ]
+            t_bs = Table(bs_table_data, colWidths=[180, 150, 150])
+            t_bs.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#059669")),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#E5E7EB")),
+            ]))
+            story.append(t_bs)
+            story.append(Spacer(1, 12))
+
+        # Narrative / Key Findings
         if narrative:
-            story.append(Paragraph("Executive Narrative Briefing", heading2_style))
+            story.append(Paragraph("Executive Insights Summary", heading2_style))
             story.append(Paragraph(narrative, body_style))
-            story.append(Spacer(1, 10))
+            story.append(Spacer(1, 8))
 
-        # Key Findings Bullets
         if key_findings:
-            story.append(Paragraph("Key Strategic Findings", heading2_style))
+            story.append(Paragraph("Key Audit & Business Findings", heading2_style))
             for finding in key_findings:
                 story.append(Paragraph(f"• {finding}", body_style))
 
